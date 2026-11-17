@@ -173,6 +173,17 @@ class TestResults(unittest.TestCase):
             r = read_test_results([path])
         self.assertEqual(r["d"], 12.6)
 
+    def test_infinite_time_counts_as_zero(self):
+        # json.dumps writes Infinity, and the browser cannot parse it
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "pytest.xml")
+            with open(path, "w") as f:
+                f.write('<testsuite><testcase name="a" time="inf"/>'
+                        '<testcase name="b" time="1e999"/>'
+                        '<testcase name="c" time="nan"/></testsuite>')
+            r = read_test_results([path])
+        self.assertEqual(r["d"], 0)
+
     def test_report_has_every_failure_in_full_and_the_slowest_first(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "build", "a", "pytest.xml")

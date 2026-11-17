@@ -2,6 +2,7 @@
 workspace dependency graph, plus colcon's parsed command line."""
 
 import ast
+import math
 import os
 import re
 import time
@@ -186,6 +187,8 @@ def _test_cases(paths):
             try:
                 sec = max(0.0, float(case.get("time") or 0))
             except ValueError:
+                sec = 0.0
+            if not math.isfinite(sec):  # "inf" is not valid JSON
                 sec = 0.0
             kind, bad = "failure", case.find("failure")
             if bad is None:
