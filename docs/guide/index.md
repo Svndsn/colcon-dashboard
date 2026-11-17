@@ -71,7 +71,7 @@ The progress bar fills as the build advances: green for done, moving blue stripe
 
 During a build, the line under the bar reads, for example, "131 of 502 packages built · 3m 12s". Then it counts the building, ready, waiting, and failed packages. At the end, it shows the build rate and the estimated time left. The estimate uses the package durations of the previous build.
 
-After the build, the line reads, for example, "502 packages built in 8m 47s". When packages printed compiler or CMake warnings, the line shows the warning count. Hold the mouse over the count to see the packages, and click it to open the first warning.
+After the build, the line reads, for example, "502 packages built in 8m 47s". When packages printed compiler or CMake warnings, the line shows the warning count. Hold the mouse over the count to see the packages, and click it to open the first warning. When the whole time changed by 5 seconds and 5 % against the last run of the same kind, the line shows the change, for example "1m 25s slower than the last run". Click it to compare each package in the [timeline](timeline.md#compare-with-another-run).
 
 ## System meters
 

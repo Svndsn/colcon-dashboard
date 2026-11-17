@@ -247,7 +247,9 @@ class PrevRunInfo(unittest.TestCase):
         graph = json.loads(mon.graph_json)
         self.assertEqual(graph["prev"]["id"], self.OLD_ID)
         self.assertEqual(graph["prev"]["durations"], {"a": 0.8})
+        self.assertEqual(graph["prev"]["last"], {"a": 0.8})
         self.assertEqual(graph["prev"]["duration"], 99.0)
+        self.assertEqual(graph["prev"]["streaks"], {})
 
     def test_prev_durations_are_medians_and_carry_failures(self):
         with tempfile.TemporaryDirectory() as ws:
@@ -262,6 +264,29 @@ class PrevRunInfo(unittest.TestCase):
         self.assertEqual(prev["median_durations"]["a"], 20.0)
         self.assertEqual(prev["failed_names"], ["b"])
         self.assertEqual(prev["runs"], 3)
+
+    def test_failure_streaks_skip_runs_without_the_package(self):
+        # b: passes, fails, is not in run 03, fails, fails. c: only fails.
+        with tempfile.TemporaryDirectory() as ws:
+            for day, b_rc in (("01", 0), ("02", 2), ("03", None), ("04", 2), ("05", 2)):
+                ev = [queued(0.1, "a"), started(0.0, "a"), ended(5.0, "a")]
+                if b_rc is not None:
+                    ev += [queued(0.1, "b"), started(0.0, "b"), ended(1.0, "b", rc=b_rc)]
+                if day >= "04":
+                    ev += [queued(0.1, "c"), started(0.0, "c"), ended(1.0, "c", rc=1)]
+                make_build(ws, f"build_2026-08-{day}_10-00-00", ev + [SHUTDOWN])
+            mon = BuildMonitor(ws)
+            prev = mon._find_prev_outcome("build_2026-08-09_10-00-00")
+            first = mon.run_outcome("build_2026-08-01_10-00-00")
+            self.assertIsNone(mon.run_outcome("../../etc"))
+            self.assertIsNone(mon.run_outcome("build_2026-08-07_10-00-00"))
+        b, c = prev["streaks"]["b"], prev["streaks"]["c"]
+        self.assertEqual((b["n"], b["since"], b["ok"]),
+                         (3, "build_2026-08-02_10-00-00", "build_2026-08-01_10-00-00"))
+        self.assertEqual((c["n"], c["since"], c["ok"]), (2, "build_2026-08-04_10-00-00", None))
+        self.assertNotIn("a", prev["streaks"])
+        self.assertEqual(first["pkg_durations"], {"a": 5.0, "b": 1.0})
+        self.assertEqual(first["outcome"], "passed")
 
     def test_first_run_has_no_prev(self):
         tmp = tempfile.TemporaryDirectory()

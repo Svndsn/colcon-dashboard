@@ -2,6 +2,7 @@ export const App = {
   buildId: null,
   graph: null,          // /api/graph packages
   prev: null,           // /api/graph prev: the previous run's durations
+  cmp: null,            // the run that the timeline compares with (gantt.js)
   graphJobCount: 0,
   lastGraphFetch: 0,
   pkgs: {},             // /api/state packages

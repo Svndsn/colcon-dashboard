@@ -3,7 +3,7 @@ import { hideTooltip, label, showNodeTooltip } from './graph.js';
 import { GS } from './gsearch.js';
 import { cutRanges, fitNames } from './namefit.js';
 import { App } from './state.js';
-import { $, fmtDur, PINNED_BUILD, svgEl, WS } from './util.js';
+import { $, esc, fmtDur, fmtWhen, PINNED_BUILD, svgEl, WS, wsParam } from './util.js';
 
 /* ---------------- gantt ---------------- */
 
@@ -19,6 +19,122 @@ const G = { rows: new Map(), gT: null, aT: null, now: null, charW: 0,
 try { G.userGut = parseInt(localStorage.getItem('cmc-gname-w') || '0', 10) || 0; }
 catch (e) { G.userGut = 0; }
 const ROW = 16, AXIS = 22, TOP = 4;
+
+/* ---- compare: the time of each package in another run ----
+   The key is '' (off), 'last' (the nearest earlier run of the same kind),
+   'usual' (the median of the last runs), or the id of an earlier run.
+   App.cmp holds the times that it resolves to: an outline bar shows each
+   one, and a label after the bars gives the change. */
+const CMP_KEY = 'cmc-gcmp';
+let cmpKey = '';
+try { cmpKey = localStorage.getItem(CMP_KEY) || ''; } catch (e) { /* not kept */ }
+const outcomes = new Map();  // run id -> /api/outcome answer
+let runsFor = null;          // the build that the run list was made for
+
+function resolveCmp() {
+  const prev = App.prev;
+  let ref = null;
+  if (cmpKey === 'last' && prev) {
+    ref = { label: `the last run (${fmtWhen(prev.at)})`, dur: prev.last || prev.durations,
+            failed: prev.failed, duration: prev.duration };
+  } else if (cmpKey === 'usual' && prev) {
+    ref = { label: prev.runs > 1 ? `the usual time (the median of ${prev.runs} runs)`
+                                 : `the last run (${fmtWhen(prev.at)})`,
+            dur: prev.durations, failed: prev.failed, duration: null };
+  } else if (outcomes.has(cmpKey)) {
+    const o = outcomes.get(cmpKey);
+    ref = { label: `the run of ${fmtWhen(o.at)}`, dur: o.pkg_durations,
+            failed: o.failed_names, duration: o.duration };
+  }
+  App.cmp = ref && { ...ref, key: cmpKey, dur: ref.dur || {}, failed: new Set(ref.failed || []) };
+}
+
+// a package that finished in both runs: its seconds more (+) or less (-)
+function pkgChange(name, p) {
+  const ref = App.cmp?.dur[name];
+  if (ref == null || p.s !== 'done' || !p.t1) return null;
+  return p.t1 - p.t0 - ref;
+}
+// a change worth a label: 10 s, or 2 s and 10 %
+const notable = (d, ref) => Math.abs(d) >= 10 || (Math.abs(d) >= 2 && Math.abs(d) >= 0.1 * ref);
+// the order by change: slower first, then the packages with no notable
+// change, then faster, then the packages with no time to compare
+function changeKey(name, p) {
+  const d = pkgChange(name, p);
+  if (d == null) return -Infinity;
+  return notable(d, App.cmp.dur[name]) ? d : 0;
+}
+const fmtChange = d => (d > 0 ? '+' : '−') + fmtDur(Math.abs(d));
+
+// the counts beside the Compare choice
+function cmpSummary() {
+  const el = $('#gcmpSum');
+  if (!App.cmp) { el.textContent = ''; el.title = ''; return; }
+  let slower = 0, faster = 0, added = 0;
+  for (const [name, p] of Object.entries(App.pkgs)) {
+    if (!p.t0) continue;
+    const ref = App.cmp.dur[name];
+    const d = pkgChange(name, p);
+    if (d != null && notable(d, ref)) { if (d > 0) slower++; else faster++; }
+    else if (ref == null && !App.cmp.failed.has(name)) added++;
+  }
+  const parts = [];
+  if (!App.active && App.cmp.duration != null && App.elapsedBase) {
+    const d = App.elapsedBase - App.cmp.duration;
+    if (Math.abs(d) >= 1) parts.push(`<b class="${d > 0 ? 'slow' : 'fast'}">${fmtChange(d)}</b> in all`);
+  }
+  if (slower) parts.push(`<b class="slow">${slower}</b> slower`);
+  if (faster) parts.push(`<b class="fast">${faster}</b> faster`);
+  if (added) parts.push(`<b>${added}</b> new`);
+  el.innerHTML = parts.length ? parts.join(' · ') : 'no notable change';
+  el.title = `against ${App.cmp.label}. A package counts as slower or faster when its time changed by 10 s, or by 2 s and 10 %. New: not in that run.`;
+}
+
+async function setCompare(key) {
+  cmpKey = key || '';
+  try {
+    if (['', 'last', 'usual'].includes(cmpKey)) localStorage.setItem(CMP_KEY, cmpKey);
+  } catch (e) { /* not kept */ }
+  const sel = $('#gcmpSelect');
+  if (cmpKey && !['last', 'usual'].includes(cmpKey) && !outcomes.has(cmpKey)) {
+    try {
+      const r = await fetch(`/api/outcome?id=${encodeURIComponent(cmpKey)}${wsParam('&')}`);
+      if (r.ok) outcomes.set(cmpKey, await r.json());
+    } catch (e) { /* offline */ }
+    if (!outcomes.has(cmpKey)) cmpKey = '';
+  }
+  sel.value = cmpKey;
+  resolveCmp();
+  drawGantt();
+}
+
+// the choices: the last run and the usual times, then each earlier run
+// of the same kind
+async function fillCompareRuns() {
+  const sel = $('#gcmpSelect');
+  const prev = App.prev;
+  const last = sel.querySelector('option[value="last"]');
+  const usual = sel.querySelector('option[value="usual"]');
+  last.disabled = usual.disabled = !prev;
+  last.textContent = prev ? `Last run (${fmtWhen(prev.at)})` : 'Last run';
+  usual.textContent = prev?.runs > 1 ? `Usual times (median of ${prev.runs} runs)` : 'Usual times';
+  if (runsFor !== App.buildId) {
+    runsFor = App.buildId;
+    let builds = [];
+    try { builds = (await (await fetch(`/api/builds${wsParam()}`)).json()).builds || []; }
+    catch (e) { /* offline */ }
+    const id = App.buildId || '';
+    const kind = id.split('_')[0] + '_';
+    const runs = builds.filter(b => b.id.startsWith(kind) && b.id < id
+                                    && b.outcome && b.outcome !== 'empty');
+    const og = $('#gcmpRuns');
+    og.innerHTML = runs.map(b => `<option value="${esc(b.id)}">`
+      + `${esc(fmtWhen(b.time))} · ${esc(b.outcome)} · ${fmtDur(b.duration)}</option>`).join('');
+    og.disabled = !runs.length;
+  }
+  sel.value = cmpKey;
+  if (sel.value !== cmpKey) sel.value = '';  // a run that is gone
+}
 
 function clearGantt(svg, axis) {
   svg.innerHTML = '';
@@ -40,10 +156,13 @@ export function drawGantt() {
     end: (a, b) => endOf(a[1]) - endOf(b[1]),
     status: (a, b) => (rank[a[1].s] ?? 9) - (rank[b[1].s] ?? 9)
                       || a[1].t0 - b[1].t0,
+    // slower first, faster last (changeKey)
+    change: (a, b) => (changeKey(...b) - changeKey(...a)) || a[1].t0 - b[1].t0,
   }[App.ganttSort] || ((a, b) => a[1].t0 - b[1].t0);
   const rows = Object.entries(App.pkgs)
     .filter(([, p]) => p.t0)
     .sort(cmp);
+  cmpSummary();
   if (!rows.length || !App.buildStarted) {
     clearGantt(svg, axis);
     G.order = [];
@@ -54,7 +173,10 @@ export function drawGantt() {
   const nowS = Date.now() / 1000;
   const t0 = App.buildStarted;
   let tMax = App.active ? nowS : t0 + 1;
-  for (const [, p] of rows) tMax = Math.max(tMax, p.t1 || (App.active ? nowS : p.t0));
+  for (const [name, p] of rows) {
+    tMax = Math.max(tMax, p.t1 || (App.active ? nowS : p.t0));
+    if (App.cmp) tMax = Math.max(tMax, p.t0 + (App.cmp.dur[name] ?? 0));  // the outline too
+  }
   const span = Math.max(30, tMax - t0);
 
   const W = Math.max(640, wrap.clientWidth - 16);
@@ -81,7 +203,8 @@ export function drawGantt() {
   svg.setAttribute('height', H);
   axis.setAttribute('width', W);
   axis.setAttribute('height', AXIS);
-  const k = (W - GUT - 20) / span;
+  // room on the right for the change labels
+  const k = (W - GUT - (App.cmp ? 64 : 20)) / span;
 
   // the grid lines and the axis are few: draw them fresh
   if (!G.gT) {
@@ -158,9 +281,39 @@ export function drawGantt() {
     r.bar.setAttribute('width', Math.max(2, (end - p.t0) * k));
     r.bar.setAttribute('height', ROW - 5);
     r.bar.classList.toggle('smatch', !!GS.set?.has(name));
+    // compare: the time in the other run as an outline behind the bar, and
+    // the change after the longer of the two
+    const ref = App.cmp?.dur[name];
+    if (ref != null) {
+      if (!r.ref) {
+        r.ref = svgEl('rect', { class: 'gref', rx: 3 });
+        r.ref.dataset.name = name;
+        svg.insertBefore(r.ref, r.bar);
+      }
+      r.ref.setAttribute('x', GUT + (p.t0 - t0) * k);
+      r.ref.setAttribute('y', y + 1.5);
+      r.ref.setAttribute('width', Math.max(2, ref * k));
+      r.ref.setAttribute('height', ROW - 4);
+    } else if (r.ref) { r.ref.remove(); r.ref = null; }
+    const d = pkgChange(name, p);
+    const txt = d != null && notable(d, ref) ? fmtChange(d)
+      : App.cmp && ref == null && !App.cmp.failed.has(name) ? 'new' : null;
+    if (txt) {
+      if (!r.dt) {
+        r.dt = svgEl('text', {}, svg);
+        r.dt.dataset.name = name;
+      }
+      r.dt.textContent = txt;
+      r.dt.setAttribute('class', 'gdelta ' + (txt === 'new' ? 'new' : d > 0 ? 'slow' : 'fast'));
+      r.dt.setAttribute('x', GUT + (p.t0 - t0 + Math.max(end - p.t0, ref ?? 0)) * k + 5);
+      r.dt.setAttribute('y', y + 11);
+    } else if (r.dt) { r.dt.remove(); r.dt = null; }
   });
   for (const [name, r] of G.rows) {
-    if (!seen.has(name)) { r.tn.remove(); r.bar.remove(); G.rows.delete(name); }
+    if (!seen.has(name)) {
+      r.tn.remove(); r.bar.remove(); r.ref?.remove(); r.dt?.remove();
+      G.rows.delete(name);
+    }
   }
   G.order = rows.map(([name]) => name);
   for (const [h, hh] of [[G.hs, H], [G.ha, AXIS]]) {
@@ -187,7 +340,7 @@ export function drawGantt() {
   svg.onpointermove = ev => {
     G.ptrY = ev.clientY;
     placeHover();
-    const b = ev.target.closest('.gbar, .gname');
+    const b = ev.target.closest('.gbar, .gname, .gref, .gdelta');
     if (b) showNodeTooltip(b.dataset.name, ev); else hideTooltip();
   };
   svg.onpointerleave = () => {
@@ -247,7 +400,7 @@ export function initGanttPan() {
     }
     drag = { x: ev.clientX, y: ev.clientY,
              sl: wrap.scrollLeft, st: wrap.scrollTop, moved: 0,
-             name: ev.target.closest?.('.gbar, .gname')?.dataset?.name
+             name: ev.target.closest?.('.gbar, .gname, .gref, .gdelta')?.dataset?.name
                    || null };
   });
   wrap.addEventListener('pointermove', ev => {
@@ -289,6 +442,8 @@ export function initGanttPan() {
     saveTimer = setTimeout(() => savePos(wrap), 250);
   });
   addEventListener('pagehide', () => savePos(wrap));
+  $('#gcmpSelect').value = cmpKey;
+  $('#gcmpSelect').onchange = ev => setCompare(ev.target.value);
 }
 
 function setUserGut(w) {
@@ -368,3 +523,9 @@ on('state', () => {
 });
 
 on('labels-changed', () => { if (App.view !== 'graph') drawGantt(); });
+// the previous run arrives with the graph, and a new build brings new runs
+on('graph', () => {
+  resolveCmp();
+  fillCompareRuns();
+});
+on('compare', key => setCompare(key));

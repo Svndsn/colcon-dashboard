@@ -86,6 +86,11 @@ export async function pollState() {
   if (App.graphJobCount !== s.total && Date.now() - App.lastGraphFetch > 10000) {
     await fetchGraph();
     emit('state', s);
+  } else if (s.prev_id && s.prev_id !== App.prev?.id && App.prevAsked !== s.prev_id) {
+    // the server read the previous run after the graph came: once per run
+    App.prevAsked = s.prev_id;
+    await fetchGraph();
+    emit('state', s);
   }
 }
 

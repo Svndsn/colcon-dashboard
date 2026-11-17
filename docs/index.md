@@ -121,7 +121,7 @@ When a package fails, its log opens by itself at the error. The Failures tab col
 
 ### Compare builds, and keep your machine in view
 
-Every build and test run stays one click away, with its outcome and its time against the run before. A per-core heatmap and the CPU, RAM, and swap meters warn you before a big build runs out of memory.
+Every build and test run stays one click away, with its outcome and its time against the run before. The timeline shows which packages got slower, and a failed package shows how many runs in a row it failed. A per-core heatmap and the CPU, RAM, and swap meters warn you before a big build runs out of memory.
 
 [A tour of the page](guide/index.md)
 </div>

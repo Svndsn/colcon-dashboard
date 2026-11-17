@@ -368,7 +368,8 @@ body.offline #sysmeters { display: none; }
 }
 .fitem .ftest:hover { text-decoration: underline; color: var(--critical); }
 .fitem .ftests .fmore { color: var(--muted); }
-.fitem .fhead .chip.newfail { color: var(--critical); font-weight: 650; }
+.fitem .fhead .chip.newfail,
+.fitem .fhead .chip.streak { color: var(--critical); font-weight: 650; }
 .fitem .fcmd { font-size: var(--fs-xs); color: var(--ink2); margin: 2px 0 4px; overflow-wrap: anywhere; }
 .wsrow .wpath .bargs { display: block; color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; }
 
@@ -520,6 +521,20 @@ body.offline #sysmeters { display: none; }
 }
 .gnow { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 2 3; }
 @keyframes pulse-f { 50% { fill-opacity: 0.55; } }
+/* compare (gantt.js): the time in the other run as a light outline behind
+   the bar (not dashed: that is an aborted bar), and the change after it */
+.gref {
+  fill: var(--ink2); fill-opacity: 0.07;
+  stroke: var(--ink2); stroke-opacity: 0.5; stroke-width: 1;
+  cursor: pointer;
+}
+.gdelta { font: var(--fs-2xs) var(--mono); fill: var(--muted); cursor: pointer; }
+.gdelta.slow { fill: var(--critical); font-weight: 650; }
+.gdelta.fast { fill: var(--good); font-weight: 650; }
+#gcmpSelect { max-width: 15em; }
+#gcmpSum { font-size: var(--fs-xs); color: var(--ink2); white-space: nowrap; }
+#gcmpSum .slow { color: var(--critical); }
+#gcmpSum .fast { color: var(--good); }
 
 /* force spread slider */
 #forceCtl {

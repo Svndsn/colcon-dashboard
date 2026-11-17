@@ -1,6 +1,6 @@
 import { emit, on } from './bus.js';
 import { App } from './state.js';
-import { $, copyText, esc, fmtDur, fmtDurLong, fmtGB, initPanel, PINNED_BUILD } from './util.js';
+import { $, copyText, esc, fmtDur, fmtDurLong, fmtGB, fmtWhen, initPanel, PINNED_BUILD } from './util.js';
 
 /* ---------------- header + tiles ---------------- */
 
@@ -174,6 +174,8 @@ function summaryLine(s, c) {
       ? `<button type="button" class="part link" id="warnPart" title="${esc(warnTip())}">`
         + `<span class="dot c-warn"></span><b>${n}</b> ${warned === 1 ? 'warning' : 'warnings'}</button>`
       : `<span class="part"><span class="dot c-${cls}"></span><b>${n}</b> ${word || cls}</span>`);
+  const change = timeChange(s);
+  if (change) parts.push(change);
   // hover: the exact time, and when the build started and finished
   const at = t => new Date(t * 1000).toLocaleString();
   const tip = [`Took ${fmtDurLong(s.elapsed)}`].concat(s.build_started
@@ -189,6 +191,23 @@ function summaryLine(s, c) {
   }
   return `<span class="lead" title="${tip.join('\n')}">${lead}</span>${parts.join('')}`
     + (meta.length ? `<span class="meta">${meta.join(' · ')}</span>` : '');
+}
+
+// A finished run against the last run of the same kind: the change of
+// its whole time, when it is 5 s and 5 % at least. A click compares each
+// package in the timeline.
+function timeChange(s) {
+  const last = App.prev?.duration;
+  if (s.active || last == null || !s.elapsed) return '';
+  const d = s.elapsed - last;
+  if (Math.abs(d) < Math.max(5, 0.05 * last)) return '';
+  const tip = [`The last run (${fmtWhen(App.prev.at)}) took ${fmtDur(last)}.`];
+  if ((App.prev.args || '') !== (s.args || ''))
+    tip.push(`It ran with other options: ${App.prev.args || 'none'}.`);
+  tip.push('Click to compare each package in the timeline.');
+  return `<button type="button" class="part link" id="cmpPart" title="${esc(tip.join('\n'))}">`
+    + `<span class="dot c-${d > 0 ? 'aborted' : 'done'}"></span><b>${fmtDur(Math.abs(d))}</b> `
+    + `${d > 0 ? 'slower' : 'faster'} than the last run</button>`;
 }
 
 // The workspace by its folder name, the build by its start time: the
@@ -299,6 +318,10 @@ on('state', applyState);
 on('build-changed', () => { warnNext = 0; });
 
 $('#tsum').addEventListener('click', ev => {
+  if (ev.target.closest('#cmpPart')) {
+    emit('compare', 'last', true);
+    return;
+  }
   if (!ev.target.closest('#warnPart') || !warnPkgs.length) return;
   const [name] = warnPkgs[warnNext++ % warnPkgs.length];
   // the lines that events.WARNING_RE counts on the server

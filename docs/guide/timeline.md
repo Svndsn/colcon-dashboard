@@ -23,8 +23,21 @@ The **Order** menu sorts the rows:
 - **Duration**: the longest package first. Use it to find the packages to speed up.
 - **End time**: the order in which the packages finished.
 - **Status**: the failed packages first.
+- **Change**: the packages that got slower first, against the run that **Compare** shows.
 
 The page keeps your choice.
+
+## Compare with another run
+
+The **Compare** menu shows why one run took longer than another. It draws the time of each package in the other run as a light outline behind its bar. After the bars, a red label such as `+42s` marks a package that got slower, and a green label such as `−10s` marks a package that got faster. The label `new` marks a package that was not in the other run.
+
+- **Last run**: the previous run of the same kind.
+- **Usual times**: the median time of each package over up to five earlier runs.
+- An earlier run: any build or test run that the log directory still keeps.
+
+A label shows a change of 10 seconds, or a change of 2 seconds and 10 %. Beside the menu, a line gives the change of the whole run and counts the slower, faster, and new packages. Choose **Change** in the **Order** menu to see the largest changes on top.
+
+After a build, the [progress line](index.md#progress-line) shows how much slower or faster the build was than the last run. Click it to open the timeline with this comparison.
 
 ## While the build runs
 

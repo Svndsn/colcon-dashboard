@@ -26,6 +26,8 @@ A page that you open on a failed build also opens the logs of the failed package
 
 A **Failures** tab appears in the dock with the first failure. It collects every failed package of the build, in the order in which they failed. For each package, it shows the last lines of its error output, a link to the line in the log, an **Open log** button, and an **Ask Claude** button. When a failed build ends, this tab comes to the front.
 
+A package that did not fail in the last run shows `new`. A package that failed in the last run too shows how many runs in a row it failed, for example `failing for 3 runs`. Its tooltip gives the date of the first failed run and of the last pass. A run without the package, for example one with `--packages-select`, does not end the count.
+
 ![The Failures tab: the failed package, the command that failed, and the end of its error output](../assets/screens/failures-tab-light.webp#only-light)
 ![The Failures tab, dark theme](../assets/screens/failures-tab-dark.webp#only-dark)
 

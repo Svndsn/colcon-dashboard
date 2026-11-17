@@ -58,6 +58,21 @@ export function failNote(p) {
   return p?.ph && !p?.tf ? `${why} in ${p.ph}` : why;  // the step that failed
 }
 
+// a run's start, short: "Nov 17, 11:36 AM"
+export function fmtWhen(t) {
+  return t ? new Date(t * 1000).toLocaleString([], {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+}
+
+// How long a package that fails now failed before: the streak of the
+// earlier runs (/api/graph prev.streaks) plus this run. runs: the failed
+// runs in a row, since: the first of them, ok: the last pass (null: no
+// kept run passed).
+export function failStreak(prev, name) {
+  const s = prev?.streaks?.[name];
+  return s ? { runs: s.n + 1, before: s.n, since: s.since_t, ok: s.ok_t } : null;
+}
+
 // the exact time in words, for tooltips: "44 minutes 12.4 seconds"
 export function fmtDurLong(sec) {
   if (sec == null || !isFinite(sec)) return '–';

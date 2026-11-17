@@ -1,4 +1,4 @@
-import { on } from './bus.js';
+import { emit, on } from './bus.js';
 import { breakFollow, zoomToPkg } from './camera.js';
 import { applySpread } from './force.js';
 import { drawGantt } from './gantt.js';
@@ -121,12 +121,26 @@ export function initViews() {
     }
   };
   syncFollow();
-  gsort.onchange = () => {
-    App.ganttSort = gsort.value;
-    localStorage.setItem('cmc-gsort', gsort.value);
+  const setSort = v => {
+    App.ganttSort = gsort.value = v;
+    localStorage.setItem('cmc-gsort', v);
     syncFollow();
-    drawGantt();
   };
+  gsort.onchange = () => {
+    setSort(gsort.value);
+    // a change needs a run to compare with: the last one
+    if (gsort.value === 'change' && !App.cmp && App.prev) emit('compare', 'last');
+    else drawGantt();
+  };
+  // a request to compare from elsewhere on the page (the summary line):
+  // show the timeline, the most slower packages first
+  on('compare', (key, open = false) => {
+    if (!open) return;
+    if (App.view === 'graph') setView('split');
+    setSort('change');
+    $('#ganttwrap').scrollTop = 0;
+    drawGantt();
+  });
   gf.onclick = () => {
     App.ganttFollow = !App.ganttFollow;
     gf.classList.toggle('on', App.ganttFollow);

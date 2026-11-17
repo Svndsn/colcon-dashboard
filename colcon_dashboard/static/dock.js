@@ -6,7 +6,7 @@ import { LogView } from './logpane.js';
 import { mode } from './modes.js';
 import { App } from './state.js';
 import { toast } from './toasts.js';
-import { $, copyText, esc, failNote, fmtDur, icon, PINNED_BUILD, WS, wsParam } from './util.js';
+import { $, copyText, esc, failNote, failStreak, fmtDur, fmtWhen, icon, PINNED_BUILD, WS, wsParam } from './util.js';
 
 /* ---------------- log dock ---------------- */
 
@@ -606,6 +606,18 @@ export function createFailPane() {
   updateCloseAll();
 }
 
+// new: it did not fail in the last run. Else: how many runs in a row it fails.
+function failChip(name) {
+  const k = failStreak(App.prev, name);
+  if (k) {
+    const tip = `it failed in every run since ${fmtWhen(k.since)}`
+      + (k.ok ? `. It last passed in the run of ${fmtWhen(k.ok)}` : ', and passed in no kept run');
+    return `<span class="chip streak" title="${esc(tip)}">failing for ${k.runs} runs</span>`;
+  }
+  return App.prev?.failed && !App.prev.failed.includes(name)
+    ? '<span class="chip newfail" title="it did not fail in the last run">new</span>' : '';
+}
+
 export function buildFailItem(name, st) {
   const el = document.createElement('div');
   el.className = 'fitem';
@@ -617,8 +629,7 @@ export function buildFailItem(name, st) {
       <span class="chip failed">${esc(failNote(st))}</span>
       ${dur ? `<span class="fmeta">failed after ${dur}</span>` : ''}
       ${st.warn ? `<span class="fmeta">${st.warn} warning${st.warn === 1 ? '' : 's'}</span>` : ''}
-      ${App.prev?.failed && !App.prev.failed.includes(name)
-        ? '<span class="chip newfail" title="it did not fail in the last run">new</span>' : ''}
+      ${failChip(name)}
       <span class="grow"></span>
       <button class="fcopy" title="copy the name, the reason, and the log tail as text">${icon('copy')}Copy</button>
       <button class="askai" ${App.ai ? '' : 'hidden'} title="explain this failure with the claude CLI">${icon('spark')}Ask Claude</button>
@@ -687,7 +698,8 @@ export function refreshFailSummary(p, failed) {
   // unchanged node every tick would destroy the user's text selection
   let prev = null;
   for (const [name, st] of failed) {
-    const key = `${name}@${st.t1 ?? ''}`;
+    // the previous run can arrive later, with the failure streaks
+    const key = `${name}@${st.t1 ?? ''}@${App.prev?.id ?? ''}`;
     let item = p.items.get(name);
     if (!item || item.key !== key) {
       if (item) item.el.remove();

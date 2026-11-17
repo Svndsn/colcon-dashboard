@@ -455,12 +455,62 @@ class BuildMonitor:
             for pkg, sec in (info.get("pkg_durations") or {}).items():
                 samples.setdefault(pkg, []).append(sec)
         nearest = found[0]
+        nearest["streaks"] = self._fail_streaks(
+            names, nearest.get("failed_names") or [])
         nearest["median_durations"] = {
             pkg: sorted(v)[len(v) // 2] if len(v) % 2 else
             round((sorted(v)[len(v) // 2 - 1] + sorted(v)[len(v) // 2]) / 2, 1)
             for pkg, v in samples.items()}
         nearest["runs"] = len(found)
         return nearest
+
+    STREAK_RUNS = 50  # the earlier runs that a failure streak looks back over
+
+    def _fail_streaks(self, names, failed):
+        """How long each package in failed (the failures of the nearest
+        earlier run) failed. names are the earlier runs, the newest first.
+        For each package: n, the runs in a row that it failed in; since,
+        the first run of that streak; ok, the last run where it passed
+        (None when no kept run did). A run without the package, for
+        example one with --packages-select, does not end the streak."""
+        streaks = {}
+        todo = set(failed)
+        for name in names[:self.STREAK_RUNS]:
+            if not todo:
+                break
+            bdir = os.path.join(self.log_base, name)
+            info = self._read_outcome(bdir) or self._compute_outcome(bdir)
+            if not info or info.get("outcome") == "empty":
+                continue
+            bad = set(info.get("failed_names") or [])
+            passed = info.get("pkg_durations") or {}
+            for pkg in list(todo):
+                streak = streaks.setdefault(pkg, {"n": 0, "ok": None, "ok_t": None})
+                if pkg in bad:  # a test run fails a package with rc 0 too
+                    streak["n"] += 1
+                    streak["since"] = name
+                    streak["since_t"] = parse_build_id_time(name)
+                elif pkg in passed:
+                    streak["ok"] = name
+                    streak["ok_t"] = parse_build_id_time(name)
+                    todo.discard(pkg)
+        return {pkg: s for pkg, s in streaks.items() if s["n"]}
+
+    def run_outcome(self, run_id):
+        """The outcome of one earlier run, with its package durations, to
+        compare with. None for an unknown run or one that still runs."""
+        if not run_id or not BUILD_DIR_RE.fullmatch(run_id):
+            return None
+        bdir = os.path.join(self.log_base, run_id)
+        if not os.path.isfile(os.path.join(bdir, "events.log")):
+            return None
+        info = self._read_outcome(bdir) or self._compute_outcome(bdir)
+        if not info:
+            return None
+        return {"id": run_id, "at": parse_build_id_time(run_id),
+                **{k: info.get(k) for k in ("outcome", "duration", "total",
+                                            "failed_names", "pkg_durations",
+                                            "args")}}
 
     def _auto_prune(self):
         """After a build ends: prune old runs, when the config asks for it."""
@@ -653,6 +703,9 @@ class BuildMonitor:
             "packages": packages,
             "sys": self.sample_system(),
             "ai": bool(CLAUDE_BIN),
+            # the previous run loads in the background: the page fetches
+            # /api/graph again when it is there
+            "prev_id": (self.prev_info or {}).get("id"),
             "seq": self.seq,
         }
 
@@ -692,12 +745,19 @@ class BuildMonitor:
                 }
             prev = None
             if self.prev_info:
-                prev = {"id": self.prev_info.get("id"),
-                        "duration": self.prev_info.get("duration"),
-                        "durations": (self.prev_info.get("median_durations")
-                                  or self.prev_info.get("pkg_durations") or {}),
-                    "runs": self.prev_info.get("runs", 1),
-                    "failed": self.prev_info.get("failed_names") or []}
+                info = self.prev_info
+                prev = {"id": info.get("id"),
+                        "at": parse_build_id_time(info.get("id") or ""),
+                        "duration": info.get("duration"),
+                        "args": info.get("args") or "",
+                        # the median of the last runs: the usual time
+                        "durations": (info.get("median_durations")
+                                      or info.get("pkg_durations") or {}),
+                        # the nearest run alone
+                        "last": info.get("pkg_durations") or {},
+                        "runs": info.get("runs", 1),
+                        "failed": info.get("failed_names") or [],
+                        "streaks": info.get("streaks") or {}}
             graph = {"build_id": build_id, "packages": graph_pkgs, "prev": prev}
             self._graph_key = graph_key
 

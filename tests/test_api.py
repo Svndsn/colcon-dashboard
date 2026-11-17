@@ -249,6 +249,16 @@ class ApiTest(unittest.TestCase):
         b = json.loads(body)
         self.assertEqual(b["builds"][0]["id"], BUILD_ID)
 
+    def test_outcome_of_one_run(self):
+        self.state()
+        st, body, _ = self.get(f"/api/outcome?ws={self.wsq()}&id={BUILD_ID}")
+        self.assertEqual(st, 200)
+        info = json.loads(body)
+        self.assertEqual((info["id"], info["pkg_durations"]), (BUILD_ID, {"a": 0.8}))
+        for bad in ("build_2026-01-01_00-00-00", "..%2F..%2Fetc", ""):
+            st, _, _ = self.get(f"/api/outcome?ws={self.wsq()}&id={bad}")
+            self.assertEqual(st, 404, bad)
+
     def test_workspaces_and_favorite(self):
         self.state()  # registers the workspace
         st, r = self.post("/api/favorite?ws=" + self.wsq() + "&fav=1")

@@ -146,7 +146,15 @@
         <option value="duration">Duration</option>
         <option value="end">End time</option>
         <option value="status">Status</option>
+        <option value="change">Change</option>
       </select></label>
+      <label id="gcmpSel" title="draw the time of each package in another run as an outline, and the change">Compare <select id="gcmpSelect">
+        <option value="">Off</option>
+        <option value="last">Last run</option>
+        <option value="usual">Usual times</option>
+        <optgroup label="An earlier run" id="gcmpRuns"></optgroup>
+      </select></label>
+      <span id="gcmpSum"></span>
       <button id="gfollowBtn" class="on" title="auto-scroll to the newest packages as they start"><span class="ic" data-icon="follow"></span>Follow</button>
     </div>
     <div id="ganttwrap"><svg id="gaxis"></svg><svg id="gantt"></svg></div>

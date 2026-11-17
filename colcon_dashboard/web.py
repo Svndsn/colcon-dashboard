@@ -369,6 +369,11 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, mon.graph_json)
             if path == "/api/builds":
                 return self._send(200, json.dumps(mon.list_builds()))
+            if path == "/api/outcome":
+                info = mon.run_outcome(q.get("id", [None])[0])
+                if info is None:
+                    return self._send(404, json.dumps({"error": "no such finished run"}))
+                return self._send(200, json.dumps(info))
             if path == "/api/buildlog":
                 ev = mon.events
                 if ev is None:
