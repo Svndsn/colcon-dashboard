@@ -351,6 +351,21 @@ class ApiTest(unittest.TestCase):
             self.assertEqual(json.loads(self.get("/api/scan-roots")[1])
                              ["scan_home"], "no")
 
+    def test_unwritable_config_keeps_the_answer_in_memory(self):
+        self.use_tmp_config()
+        blocker = os.path.join(self.tmp.name, "blocker")
+        with open(blocker, "w") as f:
+            f.write("")
+        CONFIG.path = os.path.join(blocker, "config.ini")  # cannot exist
+        st, body = self.post("/api/scan-home/set?value=yes")
+        self.assertEqual((st, body["ok"], body["saved"], body["scan_home"]),
+                         (200, True, False, "yes"))
+        with mock.patch("colcon_dashboard.web.discover_all",
+                        return_value=[]) as walk:
+            d = json.loads(self.get("/api/discover")[1])
+        self.assertEqual(d["searched"], [os.path.expanduser("~")])
+        self.assertTrue(walk.call_args.kwargs["home"])
+
     def test_scan_root_must_be_a_directory(self):
         self.use_tmp_config()
         missing = urllib.parse.quote(os.path.join(self.tmp.name, "nope"))

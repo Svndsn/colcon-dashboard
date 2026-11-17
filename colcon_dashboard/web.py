@@ -306,12 +306,16 @@ class Handler(BaseHTTPRequestHandler):
         value = q.get("value", [""])[0]
         if value not in ("yes", "no"):
             return self._send(400, json.dumps({"error": "value: yes or no"}))
-        if save_scan_home(value, CONFIG.path) is None:
-            return self._send(500, json.dumps(
-                {"error": "cannot write " + CONFIG.path}))
+        # an unwritable config.ini (a read-only home, a container) keeps
+        # the answer until the server restarts: the question must not
+        # block the picker
+        saved = save_scan_home(value, CONFIG.path) is not None
         CONFIG.scan_home = value
-        CONFIG.exists = True
-        return self._send(200, json.dumps({"ok": True, "scan_home": value}))
+        if saved:
+            CONFIG.exists = True
+        return self._send(200, json.dumps(
+            {"ok": True, "scan_home": value, "saved": saved,
+             "config_path": CONFIG.path}))
 
     def _manage_builds(self, path, q):
         ws = q.get("ws", [None])[0]

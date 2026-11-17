@@ -47,13 +47,15 @@ command =               ; a command to run when a build ends
 
 ## Home directory scan
 
-The workspace picker can scan your home directory for colcon workspaces. The scan reads only directory names, and it sends nothing off this computer. Before the first scan, the picker asks you:
+The workspace picker can scan your home directory for colcon workspaces. The scan reads only directory names, and the dashboard never sends them to the internet. Before the first scan, the picker asks you:
 
 - **Scan my home folder**: the picker scans your home directory each time you open the dashboard.
 - **Choose folders…**: the picker scans only the scan roots that you add.
 - **Not now**: the picker does not scan your home directory.
 
-The picker saves your answer as the `scan_home` key in `config.ini` and does not ask again. Every browser and the app window use the same answer. Below the found workspaces, the picker names the directories that it scans automatically.
+The picker saves your answer as the `scan_home` key in `config.ini` and does not ask again. Every browser and the app window use the same answer. Below the found workspaces, the picker names the directories that it scans automatically. If the server cannot write `config.ini`, the answer applies until the server restarts.
+
+When the server listens on the network (`host = 0.0.0.0`), every viewer of the dashboard can give the answer and see the found workspaces. This is the same as the other actions of the page, such as a server restart.
 
 To change the answer, click "Scan roots…" in the picker, or open the settings. Then set or clear the check box on the row of your home directory. You can also set the key in the file by hand:
 

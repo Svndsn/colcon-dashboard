@@ -31,6 +31,7 @@ export let wsItems = [];  // the recents, plus the scan's finds
 let foundItems = null;
 let wsScanning = false;
 let rescanAfter = false;  // the scan places changed while a scan ran
+let scanGen = 0;  // a change of the scan places makes a running scan stale
 // The answer to "scan your home folder?": ask, yes, or no. The server
 // keeps it in config.ini, so every browser and the app window share it.
 let scanHome = 'ask';
@@ -127,7 +128,7 @@ function scanCard() {
     '<div class="sc-body">' +
       '<h2 id="scancard-title">Find your workspaces</h2>' +
       '<p>The picker can scan your home folder (<code>~</code>) for colcon workspaces and list them here.</p>' +
-      `<p class="sc-safe">${icon('lock')}<span>It reads folder names only, 4 levels deep. Nothing leaves this computer.</span></p>` +
+      `<p class="sc-safe">${icon('lock')}<span>It reads folder names only, 4 levels deep, and never sends them to the internet.</span></p>` +
       '<div class="sc-btns">' +
         `<button class="primary sc-yes">${icon('search')}Scan my home folder</button>` +
         '<button class="sc-pick" title="scan only the folders that you add">Choose folders…</button>' +
@@ -266,14 +267,17 @@ export async function scanWs() {
     return;
   }
   wsScanning = true;
+  const gen = scanGen;
   renderWsList();
   try {
     const d = await (await fetch('/api/discover')).json();
-    foundItems = d.workspaces || [];
-    scanSearched = d.searched || [];
-    if (d.scan_home) scanHome = d.scan_home;
-    wsItems = wsItems.filter(w => !w.found);  // a removed root drops its finds
-    mergeFound();
+    if (gen === scanGen) {  // else the places changed during the scan
+      foundItems = d.workspaces || [];
+      scanSearched = d.searched || [];
+      if (d.scan_home) scanHome = d.scan_home;
+      wsItems = wsItems.filter(w => !w.found);  // a removed root drops its finds
+      mergeFound();
+    }
   } catch (e) { /* server gone */ }
   wsScanning = false;
   if (rescanAfter) {
@@ -286,6 +290,7 @@ export async function scanWs() {
 // scan again after a change of the places, or drop the finds when the
 // picker may not scan anywhere now
 function refreshFound() {
+  scanGen++;
   if (canScan()) return scanWs();
   foundItems = null;
   scanSearched = [];
@@ -302,6 +307,9 @@ export async function saveScanHome(on) {
       return false;
     }
     scanHome = r.scan_home;
+    if (r.saved === false) {
+      toast(`The answer applies until the server restarts: it cannot write ${esc(r.config_path)}.`, 'info');
+    }
   } catch (e) { return false; /* server gone */ }
   if (rootBoxes.size) loadScanRoots();
   refreshFound();
@@ -361,7 +369,9 @@ export async function openWsPicker() {
   try {
     const d = await (await fetch('/api/workspaces')).json();
     wsHome = d.home || '';
-    scanHome = d.scan_home || 'ask';
+    // A server older than this page (an upgrade without a restart) sends
+    // no answer: it scans the home folder by itself and cannot save one.
+    scanHome = 'scan_home' in d ? d.scan_home : 'yes';
     scanRoots = d.scan_roots || [];
     wsItems = d.workspaces || [];
     if (foundItems) mergeFound();
