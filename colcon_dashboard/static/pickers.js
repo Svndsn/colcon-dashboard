@@ -620,7 +620,10 @@ export async function openBuildPicker(retry) {
     const kind = builds[i].id.split('_')[0];
     for (let j = i + 1; j < builds.length; j++) {
       if (builds[j].id.split('_')[0] === kind
-          && builds[j].duration != null) return builds[j].complete ? builds[j].duration : null;
+          && builds[j].duration != null) {
+        // a 0.11.1 server sends no "complete": keep its behavior
+        return builds[j].complete !== false ? builds[j].duration : null;
+      }
     }
     return null;
   };
@@ -631,7 +634,7 @@ export async function openBuildPicker(retry) {
     let durHtml = '';
     if (b.duration != null) {
       durHtml = `<span class="wmeta">${fmtDur(b.duration)}</span>`;
-      const prev = b.complete ? olderDuration(i) : null;
+      const prev = b.complete !== false ? olderDuration(i) : null;
       if (prev != null && Math.abs(b.duration - prev) >= 2) {
         const d = b.duration - prev;
         durHtml += `<span class="wdelta ${d > 0 ? 'dplus' : 'dminus'}"` +

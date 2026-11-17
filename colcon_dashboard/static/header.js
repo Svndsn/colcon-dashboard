@@ -1,6 +1,6 @@
 import { emit, on } from './bus.js';
 import { App } from './state.js';
-import { $, copyText, esc, fmtDur, fmtDurLong, fmtGB, fmtWhen, initPanel, PINNED_BUILD } from './util.js';
+import { $, copyText, esc, fmtDur, fmtDurLong, fmtGB, fmtWhen, initPanel, newFailure, PINNED_BUILD } from './util.js';
 
 /* ---------------- header + tiles ---------------- */
 
@@ -158,7 +158,7 @@ function summaryLine(s, c) {
   // against the last run of the same kind: what broke, what got fixed
   const before = new Set(App.prev?.failed || []);
   // newly: no failure streak, as a run without the package does not end one
-  const newly = pkgs.filter(([n, p]) => p.s === 'failed' && App.prev && !App.prev.streaks?.[n]).length;
+  const newly = pkgs.filter(([n, p]) => p.s === 'failed' && newFailure(App.prev, n)).length;
   const fixed = pkgs.filter(([n, p]) => p.s === 'done' && before.has(n)).length;
   const waiting = (c.waiting || 0) + (c.blocked || 0);
   const parts = (s.active
@@ -201,7 +201,7 @@ function summaryLine(s, c) {
 function timeChange(s) {
   const last = App.prev?.duration;
   const c = s.counts || {};
-  if (s.active || last == null || !s.elapsed || !App.prev.complete
+  if (s.active || last == null || !s.elapsed || App.prev.complete === false
       || (c.done || 0) + (c.failed || 0) !== s.total) return '';
   const d = s.elapsed - last;
   if (Math.abs(d) < Math.max(5, 0.05 * last)) return '';

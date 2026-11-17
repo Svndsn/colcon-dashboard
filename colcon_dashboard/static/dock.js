@@ -6,7 +6,7 @@ import { LogView } from './logpane.js';
 import { mode } from './modes.js';
 import { App } from './state.js';
 import { toast } from './toasts.js';
-import { $, copyText, esc, failNote, failStreak, fmtDur, fmtWhen, icon, PINNED_BUILD, WS, wsParam } from './util.js';
+import { $, copyText, esc, failNote, failStreak, fmtDur, fmtWhen, icon, newFailure, PINNED_BUILD, WS, wsParam } from './util.js';
 
 /* ---------------- log dock ---------------- */
 
@@ -615,7 +615,7 @@ function failChip(name) {
       + (k.ok ? `. It last passed in the run of ${fmtWhen(k.ok)}` : ', and passed in no kept run');
     return `<span class="chip streak" title="${esc(tip)}">failing for ${k.runs} runs</span>`;
   }
-  return App.prev
+  return newFailure(App.prev, name)
     ? '<span class="chip newfail" title="it did not fail in the last run that had it">new</span>' : '';
 }
 

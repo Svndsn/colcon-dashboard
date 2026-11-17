@@ -73,6 +73,15 @@ export function failStreak(prev, name) {
   return s ? { runs: s.n + 1, before: s.n, since: s.since_t, ok: s.ok_t } : null;
 }
 
+// A failure is new when it has no streak. A server older than this page
+// (0.11.1, before its restart) sends no streaks: then a failure is new
+// when the last run did not fail the package.
+export function newFailure(prev, name) {
+  if (!prev) return false;
+  if (!prev.streaks) return !(prev.failed || []).includes(name);
+  return !failStreak(prev, name);
+}
+
 // the exact time in words, for tooltips: "44 minutes 12.4 seconds"
 export function fmtDurLong(sec) {
   if (sec == null || !isFinite(sec)) return '–';

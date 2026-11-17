@@ -4,7 +4,7 @@ import { requestDraw } from './draw.js';
 import { GS, runGraphSearch } from './gsearch.js';
 import { mode } from './modes.js';
 import { App } from './state.js';
-import { $, esc, failNote, failStreak, fmtDur, fmtWhen, WS } from './util.js';
+import { $, esc, failNote, failStreak, fmtDur, fmtWhen, newFailure, WS } from './util.js';
 
 /* ---------------- graph ---------------- */
 
@@ -452,7 +452,7 @@ export function showNodeTooltip(name, ev) {
     if (App.prev?.failed) {
       const was = App.prev.failed.includes(name);
       const k = failStreak(App.prev, name);
-      if (p.s === 'failed' && !k) rows.push('<b>new failure</b> since the last run');
+      if (p.s === 'failed' && newFailure(App.prev, name)) rows.push('<b>new failure</b> since the last run');
       else if (p.s === 'failed' && k) {
         rows.push(`<b>failing for ${k.runs} runs</b>, since ${fmtWhen(k.since)}`);
         rows.push(k.ok ? `last passed ${fmtWhen(k.ok)}` : 'passed in no kept run');

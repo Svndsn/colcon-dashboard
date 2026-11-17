@@ -30,12 +30,13 @@ let cmpKey = '';
 try { cmpKey = localStorage.getItem(CMP_KEY) || ''; } catch (e) { /* not kept */ }
 const outcomes = new Map();  // run id -> /api/outcome answer
 let runsFor = null;          // the build that the run list was made for
+const runsRetry = { build: null, n: 0 };  // asks again for missing outcomes
 
 function resolveCmp() {
   const prev = App.prev;
   let ref = null;
-  if (cmpKey === 'last' && prev) {
-    ref = { label: `the last run (${fmtWhen(prev.at)})`, dur: prev.last || prev.durations,
+  if (cmpKey === 'last' && prev?.last) {
+    ref = { label: `the last run (${fmtWhen(prev.at)})`, dur: prev.last,
             failed: prev.failed, unfinished: prev.unfinished, duration: prev.duration,
             complete: prev.complete };
   } else if (cmpKey === 'usual' && prev) {
@@ -85,7 +86,7 @@ function cmpSummary() {
   }
   const parts = [];
   // the whole time compares only when both runs ran every package to its end
-  if (!App.active && !unfinished && App.cmp.complete && App.cmp.duration != null
+  if (!App.active && !unfinished && App.cmp.complete !== false && App.cmp.duration != null
       && App.elapsedBase) {
     const d = App.elapsedBase - App.cmp.duration;
     if (Math.abs(d) >= 1) parts.push(`<b class="${d > 0 ? 'slow' : 'fast'}">${fmtChange(d)}</b> in all`);
@@ -122,8 +123,9 @@ async function fillCompareRuns() {
   const prev = App.prev;
   const last = sel.querySelector('option[value="last"]');
   const usual = sel.querySelector('option[value="usual"]');
-  last.disabled = usual.disabled = !prev;
-  last.textContent = prev ? `Last run (${fmtWhen(prev.at)})` : 'Last run';
+  usual.disabled = !prev;
+  last.disabled = !prev?.last;  // a 0.11.1 server sends only the medians
+  last.textContent = prev?.at ? `Last run (${fmtWhen(prev.at)})` : 'Last run';
   usual.textContent = prev?.runs > 1 ? `Usual times (median of ${prev.runs} runs)` : 'Usual times';
   if (runsFor !== App.buildId) {
     runsFor = App.buildId;
@@ -132,8 +134,16 @@ async function fillCompareRuns() {
     catch (e) { /* offline */ }
     const id = App.buildId || '';
     const kind = id.split('_')[0] + '_';
-    const runs = builds.filter(b => b.id.startsWith(kind) && b.id < id
-                                    && b.outcome && b.outcome !== 'empty');
+    const earlier = builds.filter(b => b.id.startsWith(kind) && b.id < id);
+    const runs = earlier.filter(b => b.outcome && b.outcome !== 'empty');
+    // The server can still compute some outcomes: after an upgrade, and
+    // for the run that just ended. Ask again in a moment, a few times.
+    if (runsRetry.build !== id) Object.assign(runsRetry, { build: id, n: 0 });
+    if (earlier.some(b => !b.outcome) && runsRetry.n < 10) {
+      runsRetry.n++;
+      runsFor = null;
+      setTimeout(() => { if (runsFor === null && App.buildId === id) fillCompareRuns(); }, 2000);
+    }
     const og = $('#gcmpRuns');
     og.innerHTML = runs.map(b => `<option value="${esc(b.id)}">`
       + `${esc(fmtWhen(b.time))} · ${esc(b.outcome)} · ${fmtDur(b.duration)}</option>`).join('');

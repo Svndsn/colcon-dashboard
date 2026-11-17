@@ -17,7 +17,7 @@ Open <http://localhost:8642/> in your browser. Without a workspace, the page sho
 ![The start page: the workspace picker with the starred, recent, and found workspaces](assets/screens/start-light.webp#only-light)
 ![The start page, dark theme](assets/screens/start-dark.webp#only-dark)
 
-The picker lists your starred and recent workspaces, and the colcon workspaces that it finds in your home directory. Each row shows the result of the last build.
+The picker lists your starred and recent workspaces. The first time, it asks before it scans your home directory for colcon workspaces, and it lists the workspaces that it finds. Each row shows the result of the last build.
 
 ## 2. Pick your workspace
 
