@@ -263,8 +263,8 @@
       <div class="snote sintro">The workspace picker searches your home directory and these directories for colcon workspaces.</div>
       <div id="setRoots"></div>
     </section>
-    <section>
-      <h3>Server <span class="sver"></span></h3>
+    <section class="ssrv">
+      <h3>Server</h3>
       <dl id="setServer"></dl>
       <div class="snote">To change these, edit the configuration file, then restart the server.</div>
       <div class="srow"><label><input type="checkbox" id="setLogin"> Start the server when you log in</label></div>
@@ -272,6 +272,21 @@
       <div class="snote" id="setServerNote" hidden></div>
       <div class="srow"><button id="restartBtn" title="restart the dashboard server">Restart the server</button>
         <button id="stopBtn" class="danger" title="stop the dashboard server">Stop the server…</button></div>
+    </section>
+    <section>
+      <h3>About</h3>
+      <div class="srow"><span class="sk">Version</span>
+        <a id="setVersion" target="_blank" rel="noopener" title="the release notes of this version"></a></div>
+      <div class="srow"><span class="sk">Latest</span>
+        <span class="sval"><span id="setLatest"></span>
+          <button id="setCheck" title="ask for the newest version now">Check now</button></span></div>
+      <div class="srow"><span class="sk">Upgrade with</span>
+        <span id="setUpgrade"></span></div>
+      <div class="snote" id="setUpdateNote" hidden></div>
+      <div class="srow"><span class="sk">Links</span>
+        <a href="https://autowarefoundation.github.io/colcon-dashboard/" target="_blank" rel="noopener">Documentation</a>
+        <a href="https://github.com/autowarefoundation/colcon-dashboard" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/autowarefoundation/colcon-dashboard/issues/new" target="_blank" rel="noopener">Report an issue</a></div>
     </section>
   </div>
 </div>

@@ -60,7 +60,8 @@ TEMPLATE = """\
 # Show a note in the workspace picker when a newer version is out.
 # The deb package asks apt (the local package lists, no network) and
 # checks by default. A pip or pipx install asks PyPI once a day, only
-# when this key is true.
+# when this key is true. "Check now" in the settings asks one time,
+# also when this key is false.
 #check_updates = false
 
 [builds]

@@ -94,6 +94,7 @@ The gear button opens the settings at the right edge of the page. The panel stay
 - **Package names**: hide a common prefix such as `autoware_` in the labels.
 - **Scan roots**: more folders for the workspace picker.
 - **Server**: the configuration of the server, start at login, the [tray icon](../desktop-app.md#the-tray-icon), and the buttons to restart or stop the server.
+- **About**: the version, with a link to its release notes, the newest version, the command that upgrades your install, and links to this documentation, the GitHub project, and a form for a new issue. The deb package asks apt for the newest version, and other installs ask PyPI. Click **Check now** to check at once.
 
 ## Notifications
 

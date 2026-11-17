@@ -1060,12 +1060,12 @@ body.offline #sysmeters { display: none; }
 .setbox .sclose { padding: 1px 7px; font-weight: 400; }
 .setbox section + section { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--grid); }
 .setbox h3 { margin: 0 0 8px; font-size: var(--fs-xs); font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
-.setbox h3 .sver { text-transform: none; letter-spacing: 0; font-weight: 400; margin-left: 4px; }
 .setbox .srow { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; font-size: var(--fs-m); padding: 4px 0; }
 .setbox .sk { width: 110px; flex: none; color: var(--ink2); }
 .setbox label { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .setbox .snote { font-size: var(--fs-s); color: var(--muted); margin: 2px 0 6px 122px; }
-.setbox section:last-child .snote { margin-left: 0; margin-top: 8px; }
+.setbox .ssrv .snote { margin-left: 0; margin-top: 8px; }
+.setbox a { color: var(--accent); }
 .setbox .snote.sintro { margin: 0 0 8px; }
 .setbox .roots .rootnote { margin-top: 6px; }
 .setbox .rootlist .wsrow { padding-top: 4px; padding-bottom: 4px; }
@@ -1076,6 +1076,8 @@ body.offline #sysmeters { display: none; }
 .setbox .muted { color: var(--muted); }
 .setbox button.copy { padding: 0 5px; font-size: var(--fs-xs); }
 .setbox #stopBtn { margin-top: 4px; }
+.setbox .sval { flex: 1; min-width: 0; }  /* a value that wraps stays in its column */
+.setbox #setCheck { margin-left: 4px; padding: 0 7px; font-size: var(--fs-xs); }
 @media (max-width: 520px) {
   .setbox .sk { width: 100%; }
   .setbox .snote { margin-left: 0; }

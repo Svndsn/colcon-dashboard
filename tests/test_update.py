@@ -109,6 +109,56 @@ class UpdateCheck(unittest.TestCase):
         self.assertEqual(note, {"kind": "restart", "latest": "99.0.0",
                                 "current": __version__})
 
+    def test_info_shows_a_cached_answer_also_with_the_check_off(self):
+        # a click on "Check now" filled the cache: the settings show it
+        self.install("pipx")
+        self.cache("pypi", "99.0.0")
+        info = registry_mod.update_info()
+        self.assertFalse(info["auto"])
+        self.assertEqual((info["current"], info["latest"], info["newer"], info["source"]),
+                         (__version__, "99.0.0", True, "pypi"))
+        self.assertEqual(info["command"], "pipx upgrade colcon-dashboard")
+        self.assertIsNone(info["installed"])
+
+    def test_info_before_the_first_check(self):
+        self.install("apt")
+        self.cache("pypi", "99.0.0")  # an answer for another install
+        info = registry_mod.update_info()
+        self.assertEqual((info["latest"], info["newer"], info["checked_at"]),
+                         (None, False, None))
+        self.assertIn("apt install --only-upgrade", info["command"])
+
+    def test_info_shows_the_newer_files_on_disk(self):
+        self.install("pip")
+        with mock.patch.object(registry_mod, "_disk_version", return_value="99.0.0"):
+            self.assertEqual(registry_mod.update_info()["installed"], "99.0.0")
+
+    def test_check_now_runs_also_with_the_check_off(self):
+        self.install("pipx")
+        registry_mod._check_update_now.return_value = "99.0.0"
+        info = registry_mod.check_update()
+        registry_mod._check_update_now.assert_called_once_with("pypi")
+        self.assertTrue(info["ok"])
+        registry_mod._check_update_now.return_value = None
+        self.assertFalse(registry_mod.check_update()["ok"])
+
+
+
+class CheckNow(unittest.TestCase):
+    """_check_update_now itself, with apt-cache stubbed."""
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.addCleanup(setattr, registry_mod, "CACHE_DIR", registry_mod.CACHE_DIR)
+        registry_mod.CACHE_DIR = tmp.name
+
+    def test_returns_the_answer_and_none_when_the_check_fails(self):
+        with mock.patch.object(registry_mod, "_apt_candidate", return_value="0.12.0"):
+            self.assertEqual(registry_mod._check_update_now("apt"), "0.12.0")
+        with mock.patch.object(registry_mod, "_apt_candidate", return_value=None):
+            self.assertIsNone(registry_mod._check_update_now("apt"))
+        # a failed check keeps the earlier answer in the cache
+        self.assertEqual(registry_mod._read_update()["latest"], "0.12.0")
 
 
 class DiskVersion(unittest.TestCase):

@@ -18,7 +18,9 @@ port = 8642
 log_base = log
 check_updates = false   ; true: show a note when a newer version is out
                         ; (the deb package asks apt and is true by
-                        ; default, other installs ask PyPI once a day)
+                        ; default, other installs ask PyPI once a day.
+                        ; "Check now" in the settings works also
+                        ; when this is false)
 
 [builds]
 auto_prune_keep = -1    ; N >= 1: keep the newest N builds and N test

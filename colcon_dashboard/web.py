@@ -15,7 +15,8 @@ from .ai import CLAUDE_BIN
 from .config import CONFIG, save_extra_roots
 from .events import BUILD_DIR_RE
 from .monitor import prune_builds, remove_build_dir
-from .registry import discover_all, install_source, update_check_on, update_status
+from .registry import (check_update, discover_all, install_source, update_check_on,
+                       update_info, update_status)
 
 STARTED = time.time()  # the settings dialog sees a restart by this
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -149,6 +150,8 @@ class Handler(BaseHTTPRequestHandler):
                 ok, msg = service.set_tray_autostart(on)
             return self._send(200 if ok else 400, json.dumps(
                 {"ok": ok, "message": msg, **self._server_info()}))
+        if path == "/api/update/check":
+            return self._send(200, json.dumps(check_update()))
         if path == "/api/notify":
             if not self.registry.set_notify_mode(q.get("mode", [""])[0]):
                 return self._send(400, json.dumps({"error": "mode: off, on, or sound"}))
@@ -210,6 +213,7 @@ class Handler(BaseHTTPRequestHandler):
             "login": systemd and service.login_enabled(),
             "tray": {"supported": service.tray_supported(),
                      "autostart": service.tray_autostart()},
+            "update": update_info(),
         }
 
     def _set_scan_roots(self, q):

@@ -379,6 +379,8 @@ def _read_update():
 
 
 def _check_update_now(source):
+    """Ask apt or PyPI for the newest version and cache the answer.
+    Returns the answer, or None when the check failed."""
     data = {"checked_at": time.time(), "source": source}
     latest = None
     if source == "apt":
@@ -389,6 +391,7 @@ def _check_update_now(source):
                 latest = json.load(r)["info"]["version"]
         except (OSError, ValueError, KeyError):
             pass
+    fresh = latest
     if latest is None:
         old = _read_update()  # keep a stale answer over none
         if old and old.get("source", "pypi") == source:
@@ -401,6 +404,21 @@ def _check_update_now(source):
             json.dump(data, f)
     except OSError:
         pass
+    return fresh
+
+
+def _update_source():
+    """The install kind, and where its updates come from: the deb
+    package asks apt, other installs ask PyPI."""
+    install = install_source()
+    return install, "apt" if install == "apt" else "pypi"
+
+
+def _cached_update(source):
+    data = _read_update()
+    if data and data.get("source", "pypi") != source:
+        return None  # the install changed: the old answer does not apply
+    return data
 
 
 def update_status():
@@ -418,11 +436,8 @@ def update_status():
         return {"kind": "restart", "latest": disk, "current": __version__}
     if not update_check_on():
         return None
-    install = install_source()
-    source = "apt" if install == "apt" else "pypi"
-    data = _read_update()
-    if data and data.get("source", "pypi") != source:
-        data = None  # the install changed: the old answer does not apply
+    install, source = _update_source()
+    data = _cached_update(source)
     stale = data is None \
         or time.time() - data.get("checked_at", 0) > UPDATE_INTERVAL[source]
     if stale and (_update_thread is None or not _update_thread.is_alive()):
@@ -434,6 +449,35 @@ def update_status():
         return {"kind": "upgrade", "latest": latest, "current": __version__,
                 "source": source, "command": UPGRADE_COMMAND[install]}
     return None
+
+
+def update_info():
+    """The version state for the About section of the settings: the
+    newest version from the last check, the time of that check, and the
+    command that upgrades this install. "installed" is a newer version
+    that an upgrade put on disk while this server runs."""
+    install, source = _update_source()
+    data = _cached_update(source) or {}
+    latest = data.get("latest")
+    disk = _disk_version()
+    return {
+        "current": __version__,
+        "installed": disk if disk and _ver_key(disk) > _ver_key(__version__) else None,
+        "latest": latest,
+        "newer": bool(latest) and _ver_key(latest) > _ver_key(__version__),
+        "checked_at": data.get("checked_at"),
+        "auto": update_check_on(),
+        "source": source,
+        "command": UPGRADE_COMMAND[install],
+    }
+
+
+def check_update():
+    """Check for a newer version now, because the user clicked "Check
+    now". This also runs when check_updates is off: the click asks for
+    the one request."""
+    ok = _check_update_now(_update_source()[1]) is not None
+    return dict(update_info(), ok=ok)
 
 
 SCAN_PRUNE = {"node_modules", "__pycache__", "build", "install", "log",

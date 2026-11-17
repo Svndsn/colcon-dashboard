@@ -2,7 +2,7 @@ import { getNotifyMode, notifyBlocked, serverNotifies, setNotifyMode, testNotify
 import { loadScanRoots, mountScanRoots } from './pickers.js';
 import { App } from './state.js';
 import { savedTheme, setTheme } from './theme.js';
-import { $, copyText, esc, icon, initPanel, restartServer } from './util.js';
+import { $, copyText, esc, fmtAgo, icon, initPanel, restartServer } from './util.js';
 
 /* ---------------- settings side panel ----------------
    One place for the choices this browser keeps (theme, notifications,
@@ -85,9 +85,59 @@ async function restartFromSettings() {
   renderSwitches('The server did not come back. Start it from the tray icon or a terminal.');
 }
 
+// a version links to its release notes: the tag name equals the version
+const releaseUrl = v =>
+  `https://github.com/autowarefoundation/colcon-dashboard/releases/tag/${encodeURIComponent(v)}`;
+
+// the About section: this version, the newest version from the last
+// check, and the command that upgrades this install
+function renderAbout(message) {
+  const ver = App.cfg?.version;
+  const verLink = $('#setVersion');
+  verLink.textContent = ver ? `v${ver}` : 'unknown';
+  if (ver) verLink.href = releaseUrl(ver);
+  else verLink.removeAttribute('href');
+  const u = serverInfo?.update;
+  const muted = s => `<span class="muted">${s}</span>`;
+  const link = v => `<a href="${esc(releaseUrl(v))}" target="_blank" rel="noopener">v${esc(v)}</a>`;
+  const when = u?.checked_at ? ` ${muted(`(checked ${fmtAgo(u.checked_at)})`)}` : '';
+  // the versions come from apt or PyPI: escape
+  $('#setLatest').innerHTML = !u ? muted('unknown')
+    : u.installed ? `${link(u.installed)} is installed. Restart the server to run it.`
+      : u.newer ? `${link(u.latest)} is available${when}`
+        : u.latest ? `this is the newest version${when}`
+          : u.checked_at ? `${muted('unknown: the check failed')}${when}`
+            : muted('not checked yet');
+  const check = $('#setCheck');
+  check.disabled = !u;
+  check.title = u?.source === 'apt' ? 'read the newest version from the apt package lists now'
+    : 'ask PyPI for the newest version now';
+  $('#setUpgrade').innerHTML = !u ? muted('unknown')
+    : `<code>${esc(u.command)}</code> <button class="copy" data-copy="${esc(u.command)}" title="copy the command" aria-label="copy the command">${icon('copy')}</button>`;
+  const note = $('#setUpdateNote');
+  note.textContent = message || '';
+  note.hidden = !message;
+}
+
+async function checkUpdate() {
+  const btn = $('#setCheck');
+  btn.disabled = true;
+  btn.textContent = 'Checking…';
+  let message = '';
+  try {
+    const { ok, ...update } = await (await fetch('/api/update/check', { method: 'POST' })).json();
+    if (serverInfo) serverInfo.update = update;
+    if (!ok) message = update.source === 'apt' ? 'apt knows no version of the package.' : 'PyPI did not answer.';
+  } catch (e) {
+    message = 'The server does not answer.';
+  }
+  btn.textContent = 'Check now';
+  renderAbout(message);
+}
+
 function renderServer() {
   const cfg = App.cfg?.config;
-  $('#settings .sver').textContent = App.cfg?.version ? `v${App.cfg.version}` : '';
+  renderAbout();
   if (!cfg) {
     $('#setServer').innerHTML = '<dt>configuration</dt><dd>not loaded</dd>';
     return;
@@ -142,6 +192,7 @@ export function initSettings() {
   $('#setLogin').onchange = ev => setSwitch('login', ev.target.checked);
   $('#setTray').onchange = ev => setSwitch('tray', ev.target.checked);
   $('#restartBtn').onclick = restartFromSettings;
+  $('#setCheck').onclick = checkUpdate;
   // a log choice holds for the open panes too: their own buttons flip it,
   // and those buttons keep the choice for the next panes
   const logChoice = (id, btn) => {

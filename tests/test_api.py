@@ -15,6 +15,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import ThreadingHTTPServer
+from unittest import mock
 
 from colcon_dashboard import __version__
 from colcon_dashboard import registry as registry_mod
@@ -193,6 +194,18 @@ class ApiTest(unittest.TestCase):
     def test_workspaces_has_no_update_note_by_default(self):
         _, body, _ = self.get("/api/workspaces")
         self.assertNotIn("update", json.loads(body))
+
+    def test_check_update_now(self):
+        # "Check now" in the settings: no network, an empty cache
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(registry_mod, "CACHE_DIR", tmp), \
+                mock.patch.object(registry_mod, "_check_update_now", return_value=None) as check:
+            st, d = self.post("/api/update/check")
+        self.assertEqual(st, 200)
+        check.assert_called_once()
+        self.assertFalse(d["ok"])
+        self.assertEqual((d["current"], d["latest"]), (__version__, None))
+        self.assertIn("upgrade", d["command"])
 
     def test_delete_accepts_test_runs_but_not_live_ones(self):
         test_dir = os.path.join(self.ws, "log", "test_2026-08-09_11-00-00")
