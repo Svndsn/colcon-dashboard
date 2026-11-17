@@ -445,7 +445,9 @@ export function showNodeTooltip(name, ev) {
     if (p.tr) {
       const bad = p.tr.f + p.tr.e;
       rows.push(`tests <b>${p.tr.t}</b>` + (bad ? ` · <b>${bad} failed</b>` : '')
-                + (p.tr.s ? ` · ${p.tr.s} skipped` : ''));
+                + (p.tr.s ? ` · ${p.tr.s} skipped` : '')
+                // the sum of the test case times in the JUnit files
+                + (p.tr.d ? ` · test time <b>${p.tr.d < 1 ? '&lt;1s' : fmtDur(p.tr.d)}</b>` : ''));
     }
     if (App.prev?.failed) {
       const was = App.prev.failed.includes(name);

@@ -29,6 +29,16 @@ A **Failures** tab appears in the dock with the first failure. It collects every
 ![The Failures tab: the failed package, the command that failed, and the end of its error output](../assets/screens/failures-tab-light.webp#only-light)
 ![The Failures tab, dark theme](../assets/screens/failures-tab-dark.webp#only-dark)
 
+## Failed tests
+
+A `colcon test` run reads the JUnit files of each package. These are the files that `colcon test-result` reads.
+
+- The Failures tab lists the failed tests of each package, with the first line of each message. A click on a test name opens its whole failure.
+- The **Test results** button, and the **Test results (JUnit)** choice in the selector of a package pane, open the report of the package. The report gives the counts, each failed test with its full text and captured output, and every test with its time, the slowest first.
+- The hover card of a package in the graph shows its test count and its test time.
+
+The JUnit files keep only the last test run of each package. If you open an older test run in the build picker, its report shows the newer results.
+
 ## Find the error in the log
 
 - Errors have a red bar and a red tint. The red marks beside the scrollbar show where they are. Click a mark to jump to it.

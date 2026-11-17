@@ -469,6 +469,26 @@ class ScanOnce(unittest.TestCase):
         state = json.loads(mon.state_json)
         self.assertEqual(state["build_id"], "test_2026-08-09_11-00-00")
         self.assertEqual(state["packages"]["a"]["tr"]["f"], 1)
+        # the JUnit report, served like a log file
+        r = mon.read_log("a", "tests", 0)
+        self.assertTrue(r["data"].startswith("1 tests: 0 passed, 1 failed."))
+        self.assertEqual(r["size"], len(r["data"].encode()))
+        self.assertIn("FAILED  x  (0.00 s)", r["data"])
+        self.assertEqual(mon.read_log("a", "tests", r["size"])["data"], "")
+        # no XML files: the reason, not an empty pane
+        os.remove(os.path.join(ws, "build", "a", "pytest.xml"))
+        mon._report_cache.clear()
+        r = mon.read_log("a", "tests", 0)
+        self.assertTrue(r["missing"])
+        self.assertIn("no JUnit test results", r["why"])
+
+    def test_a_build_run_has_no_test_report(self):
+        mon, _, _ = self.scan(mtime=time.time() - 600)
+        name = next(iter(json.loads(mon.state_json)["packages"]))
+        r = mon.read_log(name, "tests", 0)
+        self.assertTrue(r["missing"])
+        self.assertIn("colcon test run", r["why"])
+        self.assertIsNone(mon.read_log(name, "nonsense", 0))
 
     def test_notify_command_runs_once_when_the_build_ends(self):
         import sys

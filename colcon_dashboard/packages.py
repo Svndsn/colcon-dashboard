@@ -167,35 +167,113 @@ def _xml_files(paths):
                     yield os.path.join(dirpath, fn)
 
 
-def read_test_results(paths, max_failures=20):
-    """Counts and failing cases from the JUnit XML files in paths (folders
+def _test_cases(paths):
+    """The <testcase> elements of the JUnit XML files in paths (folders
     to walk, or single files), the files that `colcon test-result` reads.
-    None when there are none."""
-    total = failures = errors = skipped = 0
-    failing = []
-    found = False
+
+    Returns (files, cases), or None when no file parses. A case is a
+    dict: n (the name), d (seconds), bad ("failure", "error", or None),
+    skip, and for a bad case m (the message), x (the failure text), and
+    out (the output that the test runner captured)."""
+    files, cases = [], []
     for path in _xml_files(paths):
         try:
             root = ET.parse(path).getroot()
         except (ET.ParseError, OSError):
             continue
-        found = True
+        files.append(path)
         for case in root.iter("testcase"):
-            total += 1
-            bad = case.find("failure")
+            try:
+                sec = max(0.0, float(case.get("time") or 0))
+            except ValueError:
+                sec = 0.0
+            kind, bad = "failure", case.find("failure")
             if bad is None:
-                bad = case.find("error")
-                if bad is not None:
-                    errors += 1
-            else:
-                failures += 1
-            if case.find("skipped") is not None:
-                skipped += 1
-            if bad is not None and len(failing) < max_failures:
-                name = ".".join(x for x in (case.get("classname"), case.get("name")) if x)
-                msg = (bad.get("message") or bad.text or "").strip().splitlines()
-                failing.append({"n": name, "m": (msg[0] if msg else "")[:200]})
-    if not found:
+                kind, bad = "error", case.find("error")
+            c = {"n": ".".join(x for x in (case.get("classname"), case.get("name")) if x),
+                 "d": sec, "bad": kind if bad is not None else None,
+                 "skip": case.find("skipped") is not None}
+            if bad is not None:
+                c["m"] = (bad.get("message") or "").strip()
+                c["x"] = (bad.text or "").strip()
+                c["out"] = "\n".join(t for t in (
+                    (case.findtext("system-out") or "").strip(),
+                    (case.findtext("system-err") or "").strip()) if t)
+            cases.append(c)
+    return (files, cases) if files else None
+
+
+def read_test_results(paths, max_failures=20):
+    """Counts, the test time in seconds, and the first failed cases from
+    the JUnit XML files in paths. None when there are none."""
+    found = _test_cases(paths)
+    if found is None:
         return None
-    return {"t": total, "f": failures, "e": errors, "s": skipped, "fail": failing}
+    cases = found[1]
+    failing = []
+    for c in cases:
+        if c["bad"] and len(failing) < max_failures:
+            msg = (c["m"] or c["x"]).splitlines()
+            failing.append({"n": c["n"], "m": (msg[0] if msg else "")[:200]})
+    return {"t": len(cases),
+            "f": sum(c["bad"] == "failure" for c in cases),
+            "e": sum(c["bad"] == "error" for c in cases),
+            "s": sum(c["skip"] for c in cases),
+            "d": round(sum(c["d"] for c in cases), 1),
+            "fail": failing}
+
+
+REPORT_FULL = 200        # failed tests with their full text in the report
+REPORT_TEXT = 16 * 1024  # characters of one failure's text in the report
+
+
+def _cut(text):
+    if len(text) <= REPORT_TEXT:
+        return text
+    return text[:REPORT_TEXT] + f"\n[{len(text) - REPORT_TEXT} more characters cut]"
+
+
+def junit_report(paths, base=None):
+    """The JUnit results in paths as plain text for a log pane: the
+    counts, each failed test with its full text, and every test with its
+    time, the slowest first. None when there are no results."""
+    found = _test_cases(paths)
+    if found is None:
+        return None
+    files, cases = found
+    bad = [c for c in cases if c["bad"]]
+    skipped = sum(c["skip"] for c in cases)
+    passed = sum(not c["bad"] and not c["skip"] for c in cases)
+    parts = [f"{passed} passed"]
+    for n, word in ((sum(c["bad"] == "failure" for c in cases), "failed"),
+                    (sum(c["bad"] == "error" for c in cases), "errors"),
+                    (skipped, "skipped")):
+        if n:
+            parts.append(f"{n} {word}")
+    out = [f"{len(cases)} tests: {', '.join(parts)}. "
+           f"Test time {sum(c['d'] for c in cases):.2f} s.",
+           "From the JUnit files of the last colcon test run of this package:"]
+    for f in files:  # relative to the workspace, when the file is in it
+        rel = os.path.relpath(f, base) if base else f
+        out.append("  " + (f if rel.startswith(os.pardir + os.sep) else rel))
+    if bad:
+        out += ["", f"Failed tests ({len(bad)})"]
+        for c in bad[:REPORT_FULL]:
+            out += ["", f"{'FAILED' if c['bad'] == 'failure' else 'ERROR'}  "
+                        f"{c['n']}  ({c['d']:.2f} s)"]
+            if c["m"] and c["m"] not in c["x"]:
+                out.append(_cut(c["m"]))
+            if c["x"]:
+                out.append(_cut(c["x"]))
+            if c["out"]:
+                out += ["Captured output:", _cut(c["out"])]
+        if len(bad) > REPORT_FULL:
+            out += ["", f"{len(bad) - REPORT_FULL} more failed tests: "
+                        "the list below has their names."]
+    out += ["", f"All tests ({len(cases)}), the slowest first"]
+    status = {"failure": "FAILED", "error": "ERROR"}
+    for c in sorted(cases, key=lambda c: -c["d"]):
+        st = status.get(c["bad"]) or ("skipped" if c["skip"] else "passed")
+        out.append(f"{c['d']:10.2f} s  {st:<7}  {c['n']}")
+    return "\n".join(out) + "\n"
 

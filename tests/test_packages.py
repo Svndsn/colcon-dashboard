@@ -5,7 +5,8 @@ import tempfile
 import unittest
 
 from colcon_dashboard.packages import (
-    PackageIndex, arg_options, parse_namespace, read_test_results, summarize_args,
+    PackageIndex, arg_options, junit_report, parse_namespace, read_test_results,
+    summarize_args,
 )
 
 
@@ -139,6 +140,14 @@ JUNIT = """<?xml version="1.0"?>
 </testsuite>"""
 
 
+TIMED = """<testsuite>
+  <testcase classname="t" name="ok" time="0.1"/>
+  <testcase classname="t" name="slow_bad" time="12.0"><failure message="assert 1 == 2">line 1 of the trace
+line 2 of the trace</failure><system-out>printed by the test</system-out></testcase>
+  <testcase classname="t" name="broken" time="0.5"><error message="setup failed"/></testcase>
+</testsuite>"""
+
+
 class TestResults(unittest.TestCase):
     def test_counts_and_failing_cases(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -154,4 +163,34 @@ class TestResults(unittest.TestCase):
     def test_no_results(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.assertIsNone(read_test_results([os.path.join(tmp, "nope")]))
+            self.assertIsNone(junit_report([os.path.join(tmp, "nope")]))
+
+    def test_test_time(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "pytest.xml")
+            with open(path, "w") as f:
+                f.write(TIMED)
+            r = read_test_results([path])
+        self.assertEqual(r["d"], 12.6)
+
+    def test_report_has_every_failure_in_full_and_the_slowest_first(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "build", "a", "pytest.xml")
+            os.makedirs(os.path.dirname(path))
+            with open(path, "w") as f:
+                f.write(TIMED)
+            text = junit_report([path], base=tmp)
+        lines = text.splitlines()
+        self.assertEqual(lines[0], "3 tests: 1 passed, 1 failed, 1 errors. Test time 12.60 s.")
+        self.assertEqual(lines[2], "  build/a/pytest.xml")
+        # the whole failure text and the captured output, not only line 1
+        self.assertIn("FAILED  t.slow_bad  (12.00 s)", lines)
+        self.assertIn("line 2 of the trace", lines)
+        self.assertIn("Captured output:", lines)
+        self.assertIn("printed by the test", lines)
+        self.assertIn("ERROR  t.broken  (0.50 s)", lines)
+        table = lines[lines.index("All tests (3), the slowest first") + 1:]
+        self.assertEqual([ln.split()[-1] for ln in table],
+                         ["t.slow_bad", "t.broken", "t.ok"])
+        self.assertIn("FAILED", table[0])
 

@@ -355,6 +355,19 @@ body.offline #sysmeters { display: none; }
 #bargs .bcount::before { content: "· "; }
 .fitem .ftests { margin: 2px 0 4px; padding-left: 18px; font-size: var(--fs-s); color: var(--ink2); }
 .fitem .ftests li { margin: 1px 0; overflow-wrap: anywhere; }
+.fitem .ftest {
+  border: none;
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  font-size: inherit;
+  color: var(--ink);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.fitem .ftest:hover { text-decoration: underline; color: var(--critical); }
+.fitem .ftests .fmore { color: var(--muted); }
 .fitem .fhead .chip.newfail { color: var(--critical); font-weight: 650; }
 .fitem .fcmd { font-size: var(--fs-xs); color: var(--ink2); margin: 2px 0 4px; overflow-wrap: anywhere; }
 .wsrow .wpath .bargs { display: block; color: var(--muted); font-size: var(--fs-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 360px; }

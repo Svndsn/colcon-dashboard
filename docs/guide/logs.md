@@ -52,7 +52,7 @@ A pane loads the whole log, also a 10 MB build log with 60,000 lines. A thin bar
 - **Follow** keeps the pane at the end while new lines arrive. Scroll up to stop it.
 - **Time** shows or hides the timestamps. The build log counts from the start of the build, and a package pane from the start of the package.
 - **Wrap** wraps long lines. Prose from Claude starts wrapped.
-- The selector in a package pane switches between the timestamped output, `stdout+stderr`, `stderr`, `stdout`, and the command log.
+- The selector in a package pane switches between the timestamped output, `stdout+stderr`, `stderr`, `stdout`, the command log, and the test results of a `colcon test` run (see [Failed tests](failures.md#failed-tests)).
 - **Path** copies the absolute source path of the package.
 - If you set an [editor link](../configuration.md#editor-links), every `file:line` position gets a ↗ link that opens your editor at that line.
 

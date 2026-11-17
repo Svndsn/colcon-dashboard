@@ -17,8 +17,8 @@ from .config import CONFIG
 from .events import (
     BUILD_DIR_RE, EVENT_RE, EventLog, RC_RE, WARNING_RE, parse_build_id_time,
 )
-from .packages import (PackageIndex, arg_options, parse_namespace, read_test_results,
-                       summarize_args)
+from .packages import (PackageIndex, arg_options, junit_report, parse_namespace,
+                       read_test_results, summarize_args)
 
 LOG_FILES = {
     "combined": "stdout_stderr.log",
@@ -104,6 +104,7 @@ class BuildMonitor:
         self._outcome_mem = {}  # build_dir -> (events.log mtime, outcome)
         self._pkg_key = self._graph_key = None  # the inputs of the cached tables
         self._test_cache = {}  # package -> (job end time, JUnit results)
+        self._report_cache = {}  # package -> (job end time, report, why)
         self._was_active = False   # for the [notify] command at the end
         self._build_ended = False
         self._pkg_cached = None
@@ -319,20 +320,47 @@ class BuildMonitor:
                 pass
         threading.Thread(target=run, daemon=True).start()
 
+    def _test_paths(self, name):
+        """Where a package's JUnit files are, as `colcon test-result` looks."""
+        ns = self.namespace or {}
+        if ns.get("test_result_base"):  # everything goes there, per package
+            return [os.path.join(self.workspace, ns["test_result_base"], name)]
+        # ament_cmake: test_results/; pytest: pytest.xml
+        root = os.path.join(self.workspace, ns.get("build_base") or "build", name)
+        return [os.path.join(root, "test_results"), os.path.join(root, "pytest.xml")]
+
     def _test_results(self, name, ended):
         """A package's JUnit results, read once when its test job ends."""
         hit = self._test_cache.get(name)
         if hit and hit[0] == ended:
             return hit[1]
-        ns = self.namespace or {}
-        if ns.get("test_result_base"):  # everything goes there, per package
-            paths = [os.path.join(self.workspace, ns["test_result_base"], name)]
-        else:  # ament_cmake: test_results/; pytest: pytest.xml
-            root = os.path.join(self.workspace, ns.get("build_base") or "build", name)
-            paths = [os.path.join(root, "test_results"), os.path.join(root, "pytest.xml")]
-        result = read_test_results(paths)
+        result = read_test_results(self._test_paths(name))
         self._test_cache[name] = (ended, result)
         return result
+
+    def test_report(self, name):
+        """(report, why): a package's JUnit results as text (bytes) for
+        its log pane, or None and the reason why there is none. Built
+        once when the test job ends, because only the next test run
+        changes the files."""
+        if (self.namespace or {}).get("verb_name") != "test":
+            return None, ("Test results come from a colcon test run. "
+                          "This run is a colcon build.")
+        cached = self._pkg_cached
+        entry = (cached[0] if cached else {}).get(name) or {}
+        ended = entry.get("t1")
+        if ended is None:  # still running: the page waits
+            return None, (None if entry.get("t0") is not None else
+                          "The tests of this package did not run in this test run.")
+        hit = self._report_cache.get(name)
+        if hit and hit[0] == ended:
+            return hit[1], hit[2]
+        text = junit_report(self._test_paths(name), base=self.workspace)
+        why = None if text else ("This package wrote no JUnit test results. "
+                                 "It has no tests, or its tests wrote no result files.")
+        report = text.encode("utf-8") if text else None
+        self._report_cache[name] = (ended, report, why)
+        return report, why
 
     def _outcome_from_memory(self, build_dir):
         hit = self._outcome_mem.get(build_dir)
@@ -697,19 +725,38 @@ class BuildMonitor:
     # -- log serving ---------------------------------------------------------
 
     def read_log(self, pkg, which, offset, build=None, limit=None, align=False):
-        if which not in LOG_FILES or "/" in pkg or ".." in pkg or not pkg:
+        """A slice of one log file of a package. which "tests" is no
+        file: it is the package's JUnit report (test_report)."""
+        if which not in LOG_FILES and which != "tests" \
+                or "/" in pkg or ".." in pkg or not pkg:
             return None
-        build_dir = self.build_dir
-        if build and BUILD_DIR_RE.fullmatch(build):
-            build_dir = os.path.join(self.log_base, build)
-        if not build_dir:
-            return None
-        path = os.path.join(build_dir, pkg, LOG_FILES[which])
-        try:
-            size = os.path.getsize(path)
-        except OSError:  # the page tells "not written" from "empty"
-            return {"size": 0, "start": 0, "offset": 0, "data": "",
-                    "reset": False, "missing": True}
+        # the page tells "not written" from "empty"
+        missing = {"size": 0, "start": 0, "offset": 0, "data": "",
+                   "reset": False, "missing": True}
+        if which == "tests":
+            report, why = self.test_report(pkg)
+            if report is None:
+                return {**missing, "why": why} if why else missing
+            size = len(report)
+
+            def read(start, n):
+                return report[start:start + n]
+        else:
+            build_dir = self.build_dir
+            if build and BUILD_DIR_RE.fullmatch(build):
+                build_dir = os.path.join(self.log_base, build)
+            if not build_dir:
+                return None
+            path = os.path.join(build_dir, pkg, LOG_FILES[which])
+            try:
+                size = os.path.getsize(path)
+            except OSError:
+                return missing
+
+            def read(start, n):
+                with open(path, "rb") as f:
+                    f.seek(start)
+                    return f.read(n)
         reset = False
         if offset < 0:  # initial request: tail the last 128 KiB
             offset = max(0, size - 128 * 1024)
@@ -719,9 +766,7 @@ class BuildMonitor:
         cap = 512 * 1024
         if limit:
             cap = min(cap, limit)
-        with open(path, "rb") as f:
-            f.seek(offset)
-            raw = f.read(cap)
+        raw = read(offset, cap)
         end = offset + len(raw)
         if (reset or align) and offset > 0 and raw:
             i = raw.find(b"\n")  # do not start mid-line

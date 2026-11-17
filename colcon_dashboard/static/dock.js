@@ -40,9 +40,21 @@ function tabKeys(tab, name, closable) {
   });
 }
 
-export function openPane(name) {
-  if (!App.panes.has(name)) createPane(name);
+// file: open the pane on this log file ('tests': the JUnit report)
+export function openPane(name, file = null) {
+  const p = App.panes.get(name);
+  if (!p) createPane(name, file);
+  else if (file && p.file && p.file !== file) setFile(p, file);
   activatePane(name);
+}
+
+function setFile(p, file) {
+  p.file = file;
+  p.fellBack = false;  // a file picked on purpose: say nothing about a swap
+  p.el.querySelector('.fsel').value = file;
+  // the report starts with its summary: read it from the top
+  if (file === 'tests' && p.follow) p.el.querySelector('.follow').click();
+  resetPane(p);
 }
 
 /* ---- editor links: file:line in a log opens the editor ----
@@ -97,7 +109,7 @@ export function updateCloseAll() {
   $('#closeAll').hidden = ![...App.panes.values()].some(p => !p.fixed);
 }
 
-export function createPane(name) {
+export function createPane(name, file = null) {
   if (name === FAIL_PANE) return createFailPane();
   const fixed = name === BUILD_PANE;
   const ai = name.startsWith('ai:');
@@ -145,6 +157,7 @@ export function createPane(name) {
         <option value="stderr">stderr</option>
         <option value="stdout">stdout</option>
         <option value="command">Commands</option>
+        <option value="tests">Test results (JUnit)</option>
       </select></label>`}
       ${ai ? '' : `<button class="tsbtn on" title="show or hide timestamps">${icon('clock')}Time</button>`}
       <button class="wrapbtn" title="soft-wrap long lines">${icon('wrap')}Wrap</button>
@@ -158,8 +171,8 @@ export function createPane(name) {
   const p = {
     name, el: pane, tabEl: tab, pre: pane.querySelector('pre'), fixed,
     ai, pkg, running: false,
-    offset: -1, file: fixed ? 'combined' : 'streams',
-    follow: true, fetching: false,
+    offset: -1, file: fixed ? 'combined' : (file || 'streams'),
+    follow: file !== 'tests', fetching: false,
     raw: !ai && localStorage.getItem('cmc-raw') === '1',
   };
   // the whole log, as data and chunks (logpane.js)
@@ -262,12 +275,11 @@ export function createPane(name) {
       scheduleMarks(p);
     };
   }
-  pane.querySelector('.fsel')?.addEventListener('change', ev => {
-    p.file = ev.target.value;
-    p.fellBack = false;  // the user picked a file: say nothing about the swap
-    resetPane(p);
-  });
+  pane.querySelector('.fsel')?.addEventListener('change', ev => setFile(p, ev.target.value));
+  const fsel = pane.querySelector('.fsel');
+  if (fsel) fsel.value = p.file;
   const followBtn = pane.querySelector('.follow');
+  followBtn.classList.toggle('on', p.follow);
   followBtn.onclick = () => {
     p.follow = !p.follow;
     followBtn.classList.toggle('on', p.follow);
@@ -420,7 +432,9 @@ function updateLogNote(p, r) {
   const name = p.el.querySelector(`.fsel option[value="${p.file}"]`)?.textContent;
   let msg = '';
   if (!p.view.lines && !p.view.buf) {
-    msg = !ended ? 'Waiting for output…'
+    // why: the server knows why a test report is missing
+    msg = r.missing && r.why ? r.why
+        : !ended ? 'Waiting for output…'
         : r.missing ? `This build wrote no ${name} log for this package.`
         : `The ${name} log of this package is empty.`;
   } else if (p.fellBack) {
@@ -596,6 +610,7 @@ export function buildFailItem(name, st) {
   const el = document.createElement('div');
   el.className = 'fitem';
   const dur = st.t1 && st.t0 ? fmtDur(st.t1 - st.t0) : null;
+  const moreTests = st.tr ? Math.max(0, st.tr.f + st.tr.e - (st.tr.fail || []).length) : 0;
   el.innerHTML = `
     <div class="fhead">
       <button class="fjump mono" title="find this package in the graph">${esc(label(name))}</button>
@@ -607,11 +622,13 @@ export function buildFailItem(name, st) {
       <span class="grow"></span>
       <button class="fcopy" title="copy the name, the reason, and the log tail as text">${icon('copy')}Copy</button>
       <button class="askai" ${App.ai ? '' : 'hidden'} title="explain this failure with the claude CLI">${icon('spark')}Ask Claude</button>
-      <button class="fopen" title="open the full log pane">${icon('log')}Open log</button>
+      ${st.tr ? `<button class="fopen ftr" title="open the JUnit results of this package: every failure in full, and the time of each test">${icon('log')}Test results</button>` : ''}
+      <button class="fopen flog" title="open the full log pane">${icon('log')}Open log</button>
     </div>
     ${st.cmd ? `<div class="fcmd mono" title="the command that failed">$ ${esc(st.cmd)}</div>` : ''}
     ${(st.tr?.fail || []).length ? `<ul class="ftests">${st.tr.fail.map(f =>
-      `<li><span class="mono">${esc(f.n)}</span>${f.m ? ` - ${esc(f.m)}` : ''}</li>`).join('')}</ul>` : ''}
+      `<li><button class="ftest mono" data-n="${esc(f.n)}" title="show the whole failure in the test results">${esc(f.n)}</button>${f.m ? ` - ${esc(f.m)}` : ''}</li>`).join('')}${
+      moreTests ? `<li class="fmore">and ${moreTests} more in the test results</li>` : ''}</ul>` : ''}
     <pre class="ftail">Loading…</pre>`;
   el.dataset.head = `${name}: ${failNote(st)}` + (dur ? `, failed after ${dur}` : '')
     + (st.cmd ? `\n$ ${st.cmd}` : '')
@@ -621,7 +638,11 @@ export function buildFailItem(name, st) {
     emit('open-pkg', name);
     emit('focus-pkg', name);
   };
-  el.querySelector('.fopen').onclick = () => openPane(name);
+  el.querySelector('.flog').onclick = () => openPane(name);
+  const tr = el.querySelector('.ftr');
+  if (tr) tr.onclick = () => openPane(name, 'tests');
+  for (const b of el.querySelectorAll('.ftest'))
+    b.onclick = () => emit('find-in-log', name, b.dataset.n, null, 'tests');
   el.querySelector('.askai').onclick = () => emit('analyze-pkg', name);
   return el;
 }
@@ -721,8 +742,8 @@ on('open-pkg', openPane);
 // Open a package log searched for q (or the lines that match re), at its
 // first match. The log can still be loading: then the first match that
 // streams in takes the focus.
-on('find-in-log', (name, q, re = null) => {
-  openPane(name);
+on('find-in-log', (name, q, re = null, file = null) => {
+  openPane(name, file);
   const p = App.panes.get(name);
   p.el.querySelector('.search').value = q;
   p.el.querySelector('.sclear').hidden = false;
