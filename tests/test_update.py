@@ -6,6 +6,7 @@ import os
 import stat
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from unittest import mock
@@ -185,8 +186,8 @@ class UpgradeRestart(unittest.TestCase):
     def setUp(self):
         registry_mod._upgrade.update(seen=None, error=None)
         self.addCleanup(registry_mod._upgrade.update, seen=None, error=None)
-        self.live = []
-        self.reg = mock.Mock(live=lambda: self.live)
+        self.busy = False
+        self.reg = mock.Mock(busy=lambda grace: self.busy)
         for p in (mock.patch.object(registry_mod, "_disk_version", return_value="99.0.0"),
                   mock.patch.object(registry_mod, "_pkg_stamp", return_value=(40, 900, 1.0)),
                   mock.patch.object(registry_mod, "_new_code_loads",
@@ -198,11 +199,11 @@ class UpgradeRestart(unittest.TestCase):
         with mock.patch("sys.stderr"):
             return registry_mod.upgrade_ready(self.reg)
 
-    def test_waits_for_two_equal_looks_and_no_build(self):
+    def test_waits_for_two_equal_looks_and_no_work(self):
         self.assertFalse(self.look())  # the upgrade can still write files
-        self.live = [{"active": True}]
-        self.assertFalse(self.look())  # a build runs
-        self.live = [{"active": False}]
+        self.busy = True
+        self.assertFalse(self.look())  # a build, its end, or an analysis
+        self.busy = False
         self.assertTrue(self.look())
 
     def test_files_that_still_change_wait(self):
@@ -247,6 +248,45 @@ class UpgradeRestart(unittest.TestCase):
         ok, why = _NEW_CODE_LOADS("99.0.0")
         self.assertFalse(ok)
         self.assertEqual(why, "it loads version " + __version__)
+
+
+class RegistryBusy(unittest.TestCase):
+    """The work that a restart into an upgrade must not cut off."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.ws = os.path.join(tmp.name, "ws")
+        self.log = os.path.join(self.ws, "log", "build_2026-11-17_10-00-00",
+                                "events.log")
+        os.makedirs(os.path.dirname(self.log))
+        with open(self.log, "w") as f:
+            f.write("")
+        self.reg = registry_mod.Registry()
+        self.state = {"build_id": "build_2026-11-17_10-00-00", "active": False}
+        self.mon = mock.Mock(lock=threading.Lock(), analyses={})
+        type(self.mon).state_json = mock.PropertyMock(
+            side_effect=lambda: json.dumps(self.state))
+        self.reg.monitors[(self.ws, None)] = self.mon
+
+    def test_a_running_build(self):
+        self.state["active"] = True
+        os.utime(self.log, (0, 0))
+        self.assertTrue(self.reg.busy(120))
+
+    def test_a_build_that_just_ended(self):
+        # its notification, [notify] command, and prune run now
+        self.assertTrue(self.reg.busy(120))
+        old = time.time() - 300
+        os.utime(self.log, (old, old))
+        self.assertFalse(self.reg.busy(120))
+
+    def test_a_running_analysis(self):
+        os.utime(self.log, (0, 0))
+        self.mon.analyses[("b", "pkg")] = mock.Mock(running=True)
+        self.assertTrue(self.reg.busy(120))
+        self.mon.analyses[("b", "pkg")].running = False
+        self.assertFalse(self.reg.busy(120))
 
 
 if __name__ == "__main__":

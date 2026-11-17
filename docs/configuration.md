@@ -52,7 +52,7 @@ command =               ; a command to run when a build ends
 An upgrade with apt, pipx, or pip replaces the files of the dashboard, but the running server keeps the old code. The server finds the newer version on disk and restarts by itself:
 
 - It waits until the files of the new version stop changing, so that the upgrade is complete.
-- It waits until no build runs, so that it still sends the notification at the end of the build.
+- It waits until no build ran during the last 2 minutes and no Ask Claude analysis runs. The notification, the `[notify]` command, and the prune at the end of a build then finish, and an analysis keeps its answer.
 - It makes sure that a new Python process can load the new code. If the code does not load, the server keeps the old version and writes the reason to its log (`journalctl --user -u colcon-dashboard`).
 
 Then it restarts, like **Restart the server** in the settings. The restart usually comes within a minute after the upgrade. The open pages reload and show the new version.

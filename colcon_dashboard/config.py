@@ -68,8 +68,8 @@ TEMPLATE = """\
 #check_updates = false
 
 # After an upgrade puts a newer version on disk, restart the server by
-# itself when no build runs, and reload the open pages. false: restart
-# it yourself (colcon-dashboard --restart-service).
+# itself when no build or AI analysis runs, and reload the open pages.
+# false: restart it yourself (colcon-dashboard --restart-service).
 #auto_restart = true
 
 [builds]

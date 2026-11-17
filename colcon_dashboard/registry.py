@@ -241,6 +241,33 @@ class Registry:
                            on_click=(lambda: browser.open_dashboard(self.base_url))
                            if self.base_url else None)
 
+    def busy(self, grace):
+        """True while a restart would cut off work: an AI analysis runs,
+        or a watched build runs or wrote its log less than grace seconds
+        ago. The notification, the [notify] command, and the prune run
+        right after the end of a build."""
+        with self.lock:
+            monitors = list(self.monitors.values())
+        for mon in monitors:
+            with mon.lock:
+                analyses = list(mon.analyses.values())
+            if any(a.running for a in analyses):
+                return True
+        now = time.time()
+        for w in self.live():
+            if w["active"]:
+                return True
+            if not w["build_id"]:
+                continue
+            log = os.path.join(w["path"], self.log_base, w["build_id"],
+                               "events.log")
+            try:
+                if now - os.stat(log).st_mtime < grace:
+                    return True
+            except OSError:
+                pass
+        return False
+
     def live(self):
         """The watched workspaces and their builds, cheap enough for the
         tray to ask every few seconds (overview() reads the log sizes)."""
@@ -426,6 +453,7 @@ def _cached_update(source):
 
 
 UPGRADE_LOOK = 30  # seconds between looks at the files on disk
+UPGRADE_GRACE = 120  # seconds after the end of a build without a restart
 _upgrade = {"seen": None, "error": None}
 
 
@@ -477,9 +505,9 @@ def upgrade_ready(registry):
     into the newer version that an upgrade put there.
 
     Two looks in a row must see the same files, so that the upgrade is
-    done. No build may run, so that the end of a build still gets its
-    notification and its prune from this server. Then a fresh Python
-    must load the new code."""
+    done. The server must not be busy (Registry.busy): the end of a build
+    still gets its notification and its prune, and an AI analysis keeps
+    its answer. Then a fresh Python must load the new code."""
     disk = _disk_version()
     if not disk or _ver_key(disk) <= _ver_key(__version__):
         _upgrade["seen"] = None
@@ -488,7 +516,7 @@ def upgrade_ready(registry):
     if stamp != _upgrade["seen"]:
         _upgrade["seen"] = stamp  # the upgrade can still write files
         return False
-    if any(w["active"] for w in registry.live()):
+    if registry.busy(UPGRADE_GRACE):
         return False
     ok, err = _new_code_loads(disk)
     if not ok:
