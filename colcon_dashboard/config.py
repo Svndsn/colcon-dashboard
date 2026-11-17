@@ -34,6 +34,7 @@ server: unreadable values resolve to None, like missing ones.
 import configparser
 import os
 import re
+import stat
 
 
 def config_path():
@@ -129,50 +130,111 @@ def write_template(path=None):
     return path
 
 
+def _parse(text):
+    """The values of an ini text, read like Config reads them, or None
+    when configparser cannot read the text."""
+    cp = configparser.ConfigParser(inline_comment_prefixes=(";", "#"))
+    try:
+        cp.read_string(text)
+        return {s: dict(cp.items(s, raw=True))
+                for s in [cp.default_section, *cp.sections()]}
+    except configparser.Error:
+        return None
+
+
+def _ini_value(line):
+    """A line as configparser sees it: no comment, no outer spaces."""
+    if line.strip()[:1] in ("#", ";"):
+        return ""
+    for i, c in enumerate(line):  # an inline comment needs a space before
+        if c in "#;" and i and line[i - 1].isspace():
+            line = line[:i]
+            break
+    return line.strip()
+
+
+def _edit(lines, section, key, new):
+    """lines with "key = value" set in [section], like configparser
+    finds them: the section name is case-sensitive, the key is not, and
+    a line indented deeper than its key continues that key's value."""
+    def header(line):
+        m = configparser.ConfigParser.SECTCRE.match(_ini_value(line))
+        return m and m.group("header")
+    head = next((i for i, ln in enumerate(lines) if header(ln) == section),
+                None)
+    if head is None:
+        return lines + ["\n", "[%s]\n" % section, new + "\n"]
+    end = next((i for i in range(head + 1, len(lines)) if header(lines[i])),
+               len(lines))
+    keys, opt_indent = [], None  # (line, indent) of each option line
+    for i in range(head + 1, end):
+        text = _ini_value(lines[i])
+        if not text:
+            continue
+        indent = len(lines[i]) - len(lines[i].lstrip())
+        if opt_indent is not None and indent > opt_indent:
+            continue  # a continuation line
+        opt_indent = indent
+        keys.append((i, indent, re.split(r"[=:]", text, 1)[0].strip().lower()))
+    hit = next(((i, ind) for i, ind, name in keys if name == key), None)
+    if hit is not None:
+        at, ind = hit
+        stop = at + 1
+        while stop < end and lines[stop].strip() and \
+                len(lines[stop]) - len(lines[stop].lstrip()) > ind:
+            stop += 1
+        return lines[:at] + [lines[at][:ind] + new + "\n"] + lines[stop:]
+    # below the commented example, when no indented option follows it
+    # (that line would continue the new value); else at the section end
+    hint = [i for i in range(head + 1, end)
+            if re.match(r"\s*[#;]\s*%s\s*[=:]" % re.escape(key), lines[i])]
+    if hint and all(ind == 0 for i, ind, _ in keys if i > hint[-1]):
+        at = hint[-1] + 1
+    else:
+        at = end
+        while at > head + 1 and not lines[at - 1].strip():
+            at -= 1  # keep the blank lines before the next section
+    return lines[:at] + [new + "\n"] + lines[at:]
+
+
 def save_value(section, key, value, path=None):
     """Write "key = value" into [section] of the ini file.
 
     Edits that one line in place, so every comment and every other key
     stays as the user wrote it. A missing file starts from the template.
-    Returns the written path, or None when the write fails.
+    The write happens only when the new text reads back with that one
+    value changed and every other value the same: a file that the edit
+    cannot handle stays untouched. Returns the written path, or None.
     """
-    path = path or config_path()
+    path = os.path.realpath(path or config_path())  # keep a symlink
     try:
         with open(path) as f:
-            lines = f.read().splitlines(keepends=True)
+            text = f.read()
     except FileNotFoundError:
-        lines = TEMPLATE.splitlines(keepends=True)
+        text = TEMPLATE
     except (OSError, UnicodeDecodeError):
         return None
-    if lines and not lines[-1].endswith("\n"):
-        lines[-1] += "\n"
-    new = "%s = %s\n" % (key, value)
-    head = next((i for i, ln in enumerate(lines)
-                 if ln.strip().lower() == "[%s]" % section), None)
-    if head is None:
-        lines += ["\n", "[%s]\n" % section, new]
-    else:
-        end = next((i for i in range(head + 1, len(lines))
-                    if lines[i].startswith("[")), len(lines))
-        pattern = re.compile(r"%s\s*[=:]" % re.escape(key))
-        at = next((i for i in range(head + 1, end)
-                   if pattern.match(lines[i])), None)
-        if at is not None:
-            stop = at + 1  # an indented line continues the value
-            while stop < end and lines[stop].strip() and \
-                    lines[stop][0] in " \t":
-                stop += 1
-            lines[at:stop] = [new]
-        else:
-            # below the commented example, else under the header
-            hint = [i for i in range(head + 1, end)
-                    if re.match(r"#\s*%s\s*[=:]" % re.escape(key), lines[i])]
-            lines.insert((hint[-1] if hint else head) + 1, new)
+    if text and not text.endswith("\n"):
+        text += "\n"
+    out = "".join(_edit(text.splitlines(keepends=True), section, key,
+                        "%s = %s" % (key, value)))
+    before, after = _parse(text), _parse(out)
+    if before is None or after is None:
+        return None
+    want = {s: dict(v) for s, v in before.items()}
+    want.setdefault(section, dict(before.get(configparser.DEFAULTSECT, {})))
+    want[section][key] = value
+    if after != want:
+        return None
     tmp = path + ".tmp"
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(tmp, "w") as f:
-            f.write("".join(lines))
+            f.write(out)
+        try:  # a token in [notify] command stays as private as before
+            os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
+        except FileNotFoundError:
+            pass
         os.replace(tmp, path)  # a crash mid-write never truncates it
     except OSError:
         return None

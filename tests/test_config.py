@@ -208,5 +208,51 @@ class SaveScanHome(unittest.TestCase):
             self.assertEqual(f.read().count("scan_home = no"), 1)
 
 
+class SaveValueSafely(unittest.TestCase):
+    """A save must never make configparser reject the file: Config then
+    ignores the whole file, with host, port, and the notify command."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = os.path.join(self.tmp.name, "config.ini")
+
+    def save(self, text, value="yes"):
+        with open(self.path, "w") as f:
+            f.write(text)
+        return save_scan_home(value, self.path)
+
+    def test_hand_written_files_keep_their_values(self):
+        for text in ("[server]\nhost = 0.0.0.0\n[discover]  # mine\nextra_roots = /a\n",
+                     "[server]\nhost = 0.0.0.0\n[discover]\nScan_Home = no\n",
+                     "[server]\nhost = 0.0.0.0\n[discover]\nscan_home: no\n",
+                     "[server]\nhost = 0.0.0.0\n[discover]\n  scan_home = no\n  extra_roots = /a\n",
+                     "[server]\nhost = 0.0.0.0\n[discover]\n  extra_roots = /a,\n     /b\n"):
+            self.assertEqual(self.save(text), self.path, text)
+            cfg = Config(path=self.path)
+            self.assertTrue(cfg.exists, text)
+            self.assertEqual((cfg.host, cfg.scan_home), ("0.0.0.0", "yes"), text)
+            self.assertEqual(cfg.extra_roots,
+                             ["/a", "/b"] if "/b" in text else
+                             ["/a"] if "/a" in text else [], text)
+
+    def test_a_file_that_configparser_rejects_stays_untouched(self):
+        text = "[server\nport = 9000\n"
+        self.assertIsNone(self.save(text))
+        with open(self.path) as f:
+            self.assertEqual(f.read(), text)
+
+    def test_keeps_a_symlink_and_the_file_mode(self):
+        real = os.path.join(self.tmp.name, "dotfiles.ini")
+        with open(real, "w") as f:
+            f.write("[notify]\ncommand = curl -d x https://example.com/token\n")
+        os.chmod(real, 0o600)
+        os.symlink(real, self.path)
+        self.assertEqual(save_scan_home("no", self.path), real)
+        self.assertTrue(os.path.islink(self.path))
+        self.assertEqual(os.stat(real).st_mode & 0o777, 0o600)
+        self.assertEqual(Config(path=self.path).scan_home, "no")
+
+
 if __name__ == "__main__":
     unittest.main()
