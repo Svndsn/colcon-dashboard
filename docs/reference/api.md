@@ -30,7 +30,8 @@ Clients that send no `Origin` header, such as `curl` and the `colcon-dashboard` 
 | `/api/state?ws=` | Job states, counts, timings, build metadata |
 | `/api/graph?ws=` | Direct dependency edges for the graph views |
 | `/api/builds?ws=` | The `build_*` and `test_*` runs under the log base, plus the latest and pinned ids |
-| `/api/log/<pkg>?ws=&offset=N&file=streams` | A log chunk from byte `N`, plus the new offset |
+| `/api/outcome?ws=&id=` | The outcome of one finished run, with the time of each package |
+| `/api/log/<pkg>?ws=&offset=N&file=streams` | A log chunk from byte `N`, plus the new offset. `file=tests` gives the JUnit report of a package in a test run |
 | `/api/buildlog?ws=&offset=N` | A chunk of the combined build log, same shape |
 | `/api/analyze/<pkg>?ws=&q=` (POST) | Starts an AI analysis of a failed package, or asks a follow-up |
 | `/api/analysis/<pkg>?ws=&offset=N` | The analysis transcript from byte `N`, plus a running flag |
