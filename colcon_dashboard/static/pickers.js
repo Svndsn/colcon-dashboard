@@ -329,8 +329,10 @@ export function showUpdateNote(update) {
   // the versions come from a remote response: escape
   note.innerHTML = (restart
     ? `<span>colcon-dashboard <b>${esc(update.latest)}</b> is installed, but the server still runs ` +
-      `${esc(update.current)} (${notes}).</span>` +
-      `<button class="updrestart" title="restart the dashboard server to run the new version">Restart the server</button>`
+      `${esc(update.current)} (${notes}).` +
+      (update.auto ? ' It restarts by itself when no build runs.' : '') + '</span>' +
+      `<button class="updrestart" title="restart the dashboard server to run the new version">` +
+      `${update.auto ? 'Restart now' : 'Restart the server'}</button>`
     : `<span>colcon-dashboard <b>${esc(update.latest)}</b> is available ` +
       `(installed ${esc(update.current)}, ${notes}).` +
       (update.command ? ` Upgrade with <code>${esc(update.command)}</code>` +
@@ -351,7 +353,7 @@ export function showUpdateNote(update) {
     btn.textContent = 'Restarting…';
     if (await restartServer()) return;
     btn.disabled = false;
-    btn.textContent = 'Restart the server';
+    btn.textContent = update.auto ? 'Restart now' : 'Restart the server';
     toast('The server did not come back. Start it from the tray icon or a terminal.', 'info');
   };
   $('#wspick .wshead').after(note);

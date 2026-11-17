@@ -9,6 +9,7 @@ optional, and the command line always wins:
     port = 8642
     log_base = log
     check_updates = true
+    auto_restart = true
 
     [builds]
     auto_prune_keep = 10
@@ -65,6 +66,11 @@ TEMPLATE = """\
 # when this key is true. "Check now" in the settings asks one time,
 # also when this key is false.
 #check_updates = false
+
+# After an upgrade puts a newer version on disk, restart the server by
+# itself when no build runs, and reload the open pages. false: restart
+# it yourself (colcon-dashboard --restart-service).
+#auto_restart = true
 
 [builds]
 # After a build finishes, delete old runs, keeping the newest N of
@@ -269,6 +275,8 @@ class Config:
         self.log_base = self._get(cp, "server", "log_base")
         # None (unset): the install decides (registry.update_check_on)
         self.check_updates = self._get_bool(cp, "server", "check_updates")
+        # None (unset): on (registry.auto_restart_on)
+        self.auto_restart = self._get_bool(cp, "server", "auto_restart")
         self.auto_prune_keep = self._get_int(cp, "builds", "auto_prune_keep")
         self.claude_bin = self._get(cp, "ai", "claude_bin")
         self.editor_url = self._get(cp, "ui", "editor_url")

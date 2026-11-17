@@ -118,7 +118,7 @@ class TemplateFile(unittest.TestCase):
         self.assertEqual(cfg.extra_roots, [])
 
     def test_template_documents_every_key(self):
-        for key in ("host", "port", "log_base", "check_updates",
+        for key in ("host", "port", "log_base", "check_updates", "auto_restart",
                     "auto_prune_keep", "claude_bin", "editor_url",
                     "scan_home", "extra_roots"):
             self.assertIn(f"#{key} = ", TEMPLATE)

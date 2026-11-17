@@ -18,10 +18,32 @@ export function startStatePolling() {
   loop();
 }
 
+// The version of the server that this page started with. When the
+// server restarts into an upgrade, this page's code is old: load the new
+// code, and say why after the reload.
+let serverVersion = null;
+function followServerVersion(v) {
+  if (!v) return;  // a server older than this page sends none
+  if (serverVersion === null) {
+    serverVersion = v;
+    let was = null;
+    try {
+      was = sessionStorage.getItem('cmc-upgraded');
+      sessionStorage.removeItem('cmc-upgraded');
+    } catch (e) { /* no storage */ }
+    if (was === v) toast(`The dashboard restarted with version ${v}.`, 'info');
+  } else if (v !== serverVersion) {
+    try { sessionStorage.setItem('cmc-upgraded', v); } catch (e) { /* no storage */ }
+    location.reload();
+  }
+}
+
 export async function pollState() {
   let s;
   try {
-    s = await (await fetch(`/api/state${wsParam()}`)).json();
+    const res = await fetch(`/api/state${wsParam()}`);
+    followServerVersion(res.headers.get('X-Dashboard-Version'));
+    s = await res.json();
   } catch (e) {
     // the build may still run, but nobody can tell: stop the clock
     if (App.active) {

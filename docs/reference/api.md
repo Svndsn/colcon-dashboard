@@ -16,6 +16,8 @@ The server refuses requests that a web page on another site sends. It answers `4
 
 Clients that send no `Origin` header, such as `curl` and the `colcon-dashboard` command, pass.
 
+Every answer carries the `X-Dashboard-Version` header with the version of the server. The page reloads when the header changes, for example after a restart into an upgrade.
+
 | Endpoint | Returns |
 |---|---|
 | `/api/workspaces` | The recent workspaces, with live build info where known, the `scan_home` answer, and the `extra_roots` list |

@@ -14,6 +14,8 @@ from colcon_dashboard import __version__
 from colcon_dashboard import registry as registry_mod
 import tests.helpers  # noqa: F401  (it points CONFIG at a test path)
 
+_NEW_CODE_LOADS = registry_mod._new_code_loads  # the real one, unpatched
+
 POLICY = """python3-colcon-dashboard:
   Installed: 0.11.1ppa1~ubuntu24.04.1
   Candidate: 0.11.2ppa1~ubuntu24.04.1
@@ -117,7 +119,7 @@ class UpdateCheck(unittest.TestCase):
         self.install("pip")  # no update check: the restart note still shows
         with mock.patch.object(registry_mod, "_disk_version", return_value="99.0.0"):
             note = registry_mod.update_status()
-        self.assertEqual(note, {"kind": "restart", "latest": "99.0.0",
+        self.assertEqual(note, {"kind": "restart", "latest": "99.0.0", "auto": True,
                                 "current": __version__})
 
     def test_info_shows_a_cached_answer_also_with_the_check_off(self):
@@ -175,6 +177,76 @@ class CheckNow(unittest.TestCase):
 class DiskVersion(unittest.TestCase):
     def test_equals_the_running_version(self):
         self.assertEqual(registry_mod._disk_version(), __version__)
+
+
+class UpgradeRestart(unittest.TestCase):
+    """The server restarts by itself into a newer version on disk."""
+
+    def setUp(self):
+        registry_mod._upgrade.update(seen=None, error=None)
+        self.addCleanup(registry_mod._upgrade.update, seen=None, error=None)
+        self.live = []
+        self.reg = mock.Mock(live=lambda: self.live)
+        for p in (mock.patch.object(registry_mod, "_disk_version", return_value="99.0.0"),
+                  mock.patch.object(registry_mod, "_pkg_stamp", return_value=(40, 900, 1.0)),
+                  mock.patch.object(registry_mod, "_new_code_loads",
+                                    return_value=(True, None))):
+            setattr(self, p.attribute, p.start())
+            self.addCleanup(p.stop)
+
+    def look(self):
+        with mock.patch("sys.stderr"):
+            return registry_mod.upgrade_ready(self.reg)
+
+    def test_waits_for_two_equal_looks_and_no_build(self):
+        self.assertFalse(self.look())  # the upgrade can still write files
+        self.live = [{"active": True}]
+        self.assertFalse(self.look())  # a build runs
+        self.live = [{"active": False}]
+        self.assertTrue(self.look())
+
+    def test_files_that_still_change_wait(self):
+        self.assertFalse(self.look())
+        self._pkg_stamp.return_value = (41, 950, 2.0)
+        self.assertFalse(self.look())
+        self.assertTrue(self.look())
+
+    def test_no_restart_for_the_running_version(self):
+        self._disk_version.return_value = __version__
+        for _ in range(3):
+            self.assertFalse(self.look())
+        self._new_code_loads.assert_not_called()
+
+    def test_new_code_that_does_not_load_keeps_this_server(self):
+        self._new_code_loads.return_value = (False, "SyntaxError: invalid syntax")
+        for _ in range(4):
+            self.assertFalse(self.look())
+        # the note no longer promises a restart by itself
+        self.assertFalse(registry_mod.update_status()["auto"])
+        self._new_code_loads.return_value = (True, None)
+        self.assertFalse(self.look())  # a new first look
+        self.assertTrue(self.look())
+        self.assertTrue(registry_mod.update_status()["auto"])
+
+    def test_watch_restarts_once(self):
+        restart = mock.Mock()
+        with mock.patch.object(registry_mod, "upgrade_ready", side_effect=[False, True]), \
+                mock.patch("sys.stderr"):
+            registry_mod.watch_upgrade(self.reg, restart, look=0)
+        restart.assert_called_once_with()
+
+    def test_auto_restart_can_be_off(self):
+        with mock.patch.object(registry_mod.CONFIG, "auto_restart", False):
+            self.assertFalse(registry_mod.auto_restart_on())
+            self.assertFalse(registry_mod.update_status()["auto"])
+        self.assertTrue(registry_mod.auto_restart_on())  # unset: on
+
+    def test_new_code_loads_needs_the_same_version(self):
+        # a real Python that imports this package
+        self.assertEqual(_NEW_CODE_LOADS(__version__), (True, None))
+        ok, why = _NEW_CODE_LOADS("99.0.0")
+        self.assertFalse(ok)
+        self.assertEqual(why, "it loads version " + __version__)
 
 
 if __name__ == "__main__":

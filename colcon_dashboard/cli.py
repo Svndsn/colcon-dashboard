@@ -35,10 +35,11 @@ from urllib.parse import quote
 from . import __version__
 from .config import CONFIG, write_template
 from .monitor import prune_builds
-from .registry import CACHE_DIR, GLOBAL_PORT, Registry, SERVER_FILE
+from .registry import (CACHE_DIR, GLOBAL_PORT, Registry, SERVER_FILE,
+                       auto_restart_on, watch_upgrade)
 from .service import (SERVICE, reload_if_unseen, sync_menu_entry, systemctl, unit_known,
                       unit_path, user_systemd_works, write_unit)
-from .web import Handler
+from .web import Handler, restart_server
 
 
 class HTTPServerV6(ThreadingHTTPServer):
@@ -567,6 +568,11 @@ def main():
                 pass
             time.sleep(30)
     threading.Thread(target=watch_menu_entry, daemon=True).start()
+    if auto_restart_on():
+        # an upgrade replaces the files under this process: restart into
+        # them when it is done, so that the pages and the API match again
+        threading.Thread(target=watch_upgrade, args=(registry, restart_server),
+                         daemon=True).start()
 
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     info = {"host": host, "port": port}

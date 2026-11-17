@@ -103,7 +103,8 @@ function renderAbout(message) {
   const when = u?.checked_at ? ` ${muted(`(checked ${fmtAgo(u.checked_at)})`)}` : '';
   // the versions come from apt or PyPI: escape
   $('#setLatest').innerHTML = !u ? muted('unknown')
-    : u.installed ? `${link(u.installed)} is installed. Restart the server to run it.`
+    : u.installed ? `${link(u.installed)} is installed. ${u.auto_restart
+      ? 'The server restarts to it by itself when no build runs.' : 'Restart the server to run it.'}`
       : u.newer ? `${link(u.latest)} is available${when}`
         : u.latest ? `this is the newest version${when}`
           : u.checked_at ? `${muted('unknown: the check failed')}${when}`

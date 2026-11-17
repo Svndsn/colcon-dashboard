@@ -61,7 +61,7 @@ Read the log of the service:
 journalctl --user -u colcon-dashboard
 ```
 
-The running server keeps its version until a restart. After an upgrade, run `colcon-dashboard --restart-service`. If you installed the dashboard again from another place (apt, pipx, or a virtual environment), run `colcon-dashboard --install-service` again, so that the service runs the new install.
+After an upgrade, the server [restarts by itself](configuration.md#restart-after-an-upgrade) when no build runs. If it still runs the old version, look for `auto restart` lines in the log of the service, or run `colcon-dashboard --restart-service`. If you installed the dashboard again from another place (apt, pipx, or a virtual environment), run `colcon-dashboard --install-service` again, so that the service runs the new install.
 
 ## The bell shows a warning
 

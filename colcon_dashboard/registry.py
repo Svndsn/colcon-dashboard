@@ -425,6 +425,107 @@ def _cached_update(source):
     return data
 
 
+UPGRADE_LOOK = 30  # seconds between looks at the files on disk
+_upgrade = {"seen": None, "error": None}
+
+
+def auto_restart_on():
+    """auto_restart from config.ini: on unless the user turned it off."""
+    return CONFIG.auto_restart is not False
+
+
+def _pkg_stamp():
+    """The file count, the total size, and the newest mtime of the
+    package files. An upgrade that still writes files changes it."""
+    count = size = newest = 0
+    for root, dirs, files in os.walk(PKG_DIR):
+        dirs[:] = [d for d in dirs if d != "__pycache__"]
+        for name in files:
+            try:
+                st = os.stat(os.path.join(root, name))
+            except OSError:
+                continue
+            count += 1
+            size += st.st_size
+            newest = max(newest, st.st_mtime)
+    return count, size, newest
+
+
+def _new_code_loads(version):
+    """(True, None) when a fresh Python imports the server code of
+    version, else (False, the reason). A restart into a half-written or
+    broken install would end the server for good."""
+    code = ("import colcon_dashboard.cli, colcon_dashboard; "
+            "print(colcon_dashboard.__version__)")
+    try:
+        r = subprocess.run([sys.executable, "-c", code],
+                           stdin=subprocess.DEVNULL, capture_output=True,
+                           text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as e:
+        return False, str(e)
+    if r.returncode != 0:
+        lines = r.stderr.strip().splitlines()
+        return False, lines[-1] if lines else "exit code %d" % r.returncode
+    loaded = r.stdout.strip()
+    if loaded != version:
+        return False, "it loads version %s" % loaded
+    return True, None
+
+
+def upgrade_ready(registry):
+    """One look at the files on disk: True when the server can restart
+    into the newer version that an upgrade put there.
+
+    Two looks in a row must see the same files, so that the upgrade is
+    done. No build may run, so that the end of a build still gets its
+    notification and its prune from this server. Then a fresh Python
+    must load the new code."""
+    disk = _disk_version()
+    if not disk or _ver_key(disk) <= _ver_key(__version__):
+        _upgrade["seen"] = None
+        return False
+    stamp = (disk, _pkg_stamp())
+    if stamp != _upgrade["seen"]:
+        _upgrade["seen"] = stamp  # the upgrade can still write files
+        return False
+    if any(w["active"] for w in registry.live()):
+        return False
+    ok, err = _new_code_loads(disk)
+    if not ok:
+        if err != _upgrade["error"]:
+            print(f"auto restart: version {disk} does not load: {err}",
+                  file=sys.stderr, flush=True)
+        _upgrade["error"] = err
+        _upgrade["seen"] = None  # look again: a fix can follow
+        return False
+    _upgrade["error"] = None
+    return True
+
+
+def watch_upgrade(registry, restart, look=UPGRADE_LOOK):
+    """Call restart once an upgrade is ready (upgrade_ready). An
+    upgrade replaces the files under this process, and the pages that it
+    serves then come from the new version: a restart makes the server
+    match them again. Runs in a daemon thread."""
+    while True:
+        time.sleep(look)
+        try:
+            ready = upgrade_ready(registry)
+        except Exception as e:  # the watch must never stop the server
+            print(f"auto restart: {e}", file=sys.stderr, flush=True)
+            continue
+        if ready:
+            print(f"auto restart: version {_disk_version()} is installed,"
+                  " restarting", file=sys.stderr, flush=True)
+            restart()
+            return
+
+
+def _auto_restarts():
+    """True when this server restarts by itself into a newer version."""
+    return auto_restart_on() and not _upgrade["error"]
+
+
 def update_status():
     """The note for the workspace picker, or None.
 
@@ -437,7 +538,8 @@ def update_status():
     global _update_thread
     disk = _disk_version()
     if disk and _ver_key(disk) > _ver_key(__version__):
-        return {"kind": "restart", "latest": disk, "current": __version__}
+        return {"kind": "restart", "latest": disk, "current": __version__,
+                "auto": _auto_restarts()}
     if not update_check_on():
         return None
     install, source = _update_source()
@@ -467,6 +569,7 @@ def update_info():
     return {
         "current": __version__,
         "installed": disk if disk and _ver_key(disk) > _ver_key(__version__) else None,
+        "auto_restart": _auto_restarts(),
         "latest": latest,
         "newer": bool(latest) and _ver_key(latest) > _ver_key(__version__),
         "checked_at": data.get("checked_at"),

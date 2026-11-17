@@ -375,6 +375,13 @@ class ApiTest(unittest.TestCase):
                           urllib.parse.quote(self.tmp.name + ",x"))
         self.assertEqual(st, 400)
 
+    def test_every_answer_names_the_server_version(self):
+        # the pages reload when it changes: a restart into an upgrade
+        for path in ("/api/ping", "/api/state?ws=" + self.wsq(), "/"):
+            with urllib.request.urlopen(self.base + path, timeout=5) as r:
+                self.assertEqual(r.headers.get("X-Dashboard-Version"),
+                                 __version__, path)
+
     def test_unknown_api_is_404(self):
         st, _, _ = self.get("/api/nonsense?ws=" + self.wsq())
         self.assertEqual(st, 404)

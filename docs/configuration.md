@@ -21,6 +21,8 @@ check_updates = false   ; true: show a note when a newer version is out
                         ; default, other installs ask PyPI once a day.
                         ; "Check now" in the settings works also
                         ; when this is false)
+auto_restart = true     ; false: restart the server yourself after
+                        ; an upgrade
 
 [builds]
 auto_prune_keep = -1    ; N >= 1: keep the newest N builds and N test
@@ -43,6 +45,23 @@ extra_roots =           ; e.g. /mnt/data, ~/ros - more directories for
 
 [notify]
 command =               ; a command to run when a build ends
+```
+
+## Restart after an upgrade
+
+An upgrade with apt, pipx, or pip replaces the files of the dashboard, but the running server keeps the old code. The server finds the newer version on disk and restarts by itself:
+
+- It waits until the files of the new version stop changing, so that the upgrade is complete.
+- It waits until no build runs, so that it still sends the notification at the end of the build.
+- It makes sure that a new Python process can load the new code. If the code does not load, the server keeps the old version and writes the reason to its log (`journalctl --user -u colcon-dashboard`).
+
+Then it restarts, like **Restart the server** in the settings. The restart usually comes within a minute after the upgrade. The open pages reload and show the new version.
+
+To restart the server yourself instead, turn this off:
+
+```ini
+[server]
+auto_restart = false
 ```
 
 ## Home directory scan

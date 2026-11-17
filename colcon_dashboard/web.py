@@ -78,6 +78,17 @@ def _gzipped(body, data, shared):
     return gz
 
 
+def restart_server(fallback=None):
+    """Restart this server, without waiting: systemd starts the service
+    again, else main() starts this process again with exec after the
+    stop. fallback stops a server that main() did not start (tests)."""
+    if service.under_service():
+        threading.Timer(0.2, service.restart_unit).start()
+        return
+    Handler.restart_requested = True
+    threading.Thread(target=Handler.on_stop or fallback, daemon=True).start()
+
+
 def _local_names():
     names = {"localhost"}
     for name in (socket.gethostname(), socket.getfqdn()):
@@ -142,6 +153,8 @@ class Handler(BaseHTTPRequestHandler):
             data = _gzipped(body, data, shared)
         self.send_response(code)
         self.send_header("Content-Type", ctype + "; charset=utf-8")
+        # the pages reload when it changes: a restart into an upgrade
+        self.send_header("X-Dashboard-Version", __version__)
         if packed:
             self.send_header("Content-Encoding", "gzip")
         self.send_header("Vary", "Accept-Encoding")
@@ -191,15 +204,8 @@ class Handler(BaseHTTPRequestHandler):
             print(f"page error: {text}", file=sys.stderr, flush=True)
             return self._send(200, json.dumps({"ok": True}))
         if path == "/api/server/restart":
-            if service.under_service():
-                # systemd ends this process and starts a new one
-                self._send(200, json.dumps({"ok": True}))
-                threading.Timer(0.2, service.restart_unit).start()
-                return
             self._send(200, json.dumps({"ok": True}))
-            Handler.restart_requested = True
-            stop = Handler.on_stop or self.server.shutdown
-            threading.Thread(target=stop, daemon=True).start()
+            restart_server(self.server.shutdown)
             return
         if path in ("/api/server/login", "/api/server/tray"):
             on = q.get("on", ["1"])[0] not in ("0", "false")

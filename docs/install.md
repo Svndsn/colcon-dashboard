@@ -92,7 +92,7 @@ Open <http://localhost:8642/>. The page shows the workspace picker. Pick your wo
 
 To use the dashboard in its own window, [install it as an app](desktop-app.md) from the browser.
 
-After an upgrade, run `colcon-dashboard --restart-service`. The running server keeps the old version until it restarts.
+After an upgrade, the server restarts by itself when no build runs, usually within a minute, and the open pages reload (see [restart after an upgrade](configuration.md#restart-after-an-upgrade)). Version 0.11.1 and older do not do this. After an upgrade from one of them, run `colcon-dashboard --restart-service` once.
 
 Without the service, `colcon-dashboard` starts the server in the terminal. It runs in the foreground until you press ++ctrl+c++.
 
