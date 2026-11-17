@@ -64,7 +64,7 @@ Pick one way to install it. The Ubuntu PPA is the easiest on Ubuntu, and pipx wo
     To upgrade to the newest release:
 
     ```bash
-    pip install --upgrade colcon-dashboard
+    ~/.venvs/colcon-dashboard/bin/pip install --upgrade colcon-dashboard
     ```
 
 === "From a checkout"

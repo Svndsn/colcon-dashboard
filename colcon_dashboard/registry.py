@@ -7,6 +7,7 @@ list, and the home-directory scan for colcon workspaces.
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import threading
@@ -308,7 +309,10 @@ UPDATE_INTERVAL = {"pypi": 86400, "apt": 3600}
 UPGRADE_COMMAND = {
     "apt": f"sudo apt install --only-upgrade {DEB_PACKAGE}",
     "pipx": "pipx upgrade colcon-dashboard",
-    "pip": "pip install --upgrade colcon-dashboard",
+    # the pip of this Python: a venv install is not on PATH, and the
+    # system pip refuses or installs into ~/.local instead
+    "pip": "%s -m pip install --upgrade colcon-dashboard"
+           % shlex.quote(sys.executable or "python3"),
 }
 _update_thread = None
 

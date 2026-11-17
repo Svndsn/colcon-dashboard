@@ -4,6 +4,7 @@ PyPI for other installs, and a restart note after an upgrade."""
 import json
 import os
 import stat
+import sys
 import tempfile
 import time
 import unittest
@@ -80,6 +81,16 @@ class UpdateCheck(unittest.TestCase):
             note = registry_mod.update_status()
         self.assertEqual(note["kind"], "upgrade")
         self.assertEqual(note["command"], "pipx upgrade colcon-dashboard")
+
+    def test_pip_command_uses_the_pip_of_this_python(self):
+        # a venv install is not on PATH: a plain "pip" upgrades another copy
+        self.install("pip")
+        self.cache("pypi", "99.0.0")
+        with mock.patch.object(registry_mod.CONFIG, "check_updates", True):
+            note = registry_mod.update_status()
+        self.assertTrue(note["command"].endswith(
+            " -m pip install --upgrade colcon-dashboard"))
+        self.assertIn(sys.executable, note["command"])
 
     def test_deb_install_shows_the_apt_version_with_the_apt_command(self):
         self.install("apt")
