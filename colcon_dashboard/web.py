@@ -1,5 +1,6 @@
 """The HTTP layer: the API endpoints and the static single-page UI."""
 
+import gzip
 import ipaddress
 import json
 import os
@@ -24,6 +25,57 @@ STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 MIME = {".html": "text/html", ".js": "text/javascript", ".css": "text/css",
         ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
         ".webmanifest": "application/manifest+json"}
+
+
+# gzip for every browser that accepts it. The state of a 500-package build
+# is 48 KB, and a page polls it every second. A viewer on another machine
+# comes through an SSH tunnel or a VS Code port forward (docs/remote.md),
+# so the server sees localhost there too: it cannot skip local clients.
+# The state and the graph compress once per scan for all viewers, at the
+# best ratio (48 KB to 10 KB in 0.6 ms). An answer made for one request,
+# such as a 512 KB log chunk, takes the fast level: 28 KB in 0.9 ms
+# instead of 23 KB in 2.8 ms, which keeps a local log load quick.
+GZIP_MIN = 2048  # bytes; a smaller answer gains little
+GZIP_SHARED, GZIP_FAST = 6, 1
+GZIP_TYPES = ("application/json", "text/", "image/svg+xml",
+              "application/manifest+json")  # PNG is compressed already
+_gz_cache = {}  # id(body) -> (body, gzip bytes): see Handler._send
+_gz_lock = threading.Lock()
+
+
+def accepts_gzip(header):
+    """True when an Accept-Encoding header allows gzip."""
+    for part in (header or "").split(","):
+        name, _, params = part.partition(";")
+        if name.strip().lower() not in ("gzip", "*"):
+            continue
+        q = params.strip().lower().replace(" ", "")
+        if q.startswith("q="):
+            try:
+                return float(q[2:]) > 0
+            except ValueError:
+                return False
+        return True
+    return False
+
+
+def _gzipped(body, data, shared):
+    """data compressed. shared: body is a published state or graph string,
+    which stays the same object until the next scan, so all viewers of
+    one workspace share one compression per scan."""
+    if not shared:
+        return gzip.compress(data, GZIP_FAST)
+    key = id(body)
+    with _gz_lock:
+        hit = _gz_cache.get(key)
+    if hit and hit[0] is body:
+        return hit[1]
+    gz = gzip.compress(data, GZIP_SHARED)
+    with _gz_lock:
+        _gz_cache[key] = (body, gz)  # the body stays alive, so its id stays unique
+        while len(_gz_cache) > 16:
+            _gz_cache.pop(next(iter(_gz_cache)))
+    return gz
 
 
 def _local_names():
@@ -82,10 +134,17 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass
 
-    def _send(self, code, body, ctype="application/json"):
+    def _send(self, code, body, ctype="application/json", shared=False):
         data = body if isinstance(body, bytes) else body.encode()
+        packed = (len(data) >= GZIP_MIN and ctype.startswith(GZIP_TYPES)
+                  and accepts_gzip(self.headers.get("Accept-Encoding")))
+        if packed:
+            data = _gzipped(body, data, shared)
         self.send_response(code)
         self.send_header("Content-Type", ctype + "; charset=utf-8")
+        if packed:
+            self.send_header("Content-Encoding", "gzip")
+        self.send_header("Vary", "Accept-Encoding")
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
@@ -365,12 +424,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, json.dumps(
                     {"error": "no workspace selected", "nows": True}))
             mon.last_request = time.time()
+            # read under the lock, send after it: a slow network client
+            # must not hold up the next scan
             if path == "/api/state":
                 with mon.lock:
-                    return self._send(200, mon.state_json)
+                    body = mon.state_json
+                return self._send(200, body, shared=True)
             if path == "/api/graph":
                 with mon.lock:
-                    return self._send(200, mon.graph_json)
+                    body = mon.graph_json
+                return self._send(200, body, shared=True)
             if path == "/api/builds":
                 return self._send(200, json.dumps(mon.list_builds()))
             if path == "/api/outcome":
