@@ -157,7 +157,8 @@ function summaryLine(s, c) {
   const badTests = pkgs.reduce((n, [, p]) => n + (p.tr ? p.tr.f + p.tr.e : 0), 0);
   // against the last run of the same kind: what broke, what got fixed
   const before = new Set(App.prev?.failed || []);
-  const newly = pkgs.filter(([n, p]) => p.s === 'failed' && App.prev && !before.has(n)).length;
+  // newly: no failure streak, as a run without the package does not end one
+  const newly = pkgs.filter(([n, p]) => p.s === 'failed' && App.prev && !App.prev.streaks?.[n]).length;
   const fixed = pkgs.filter(([n, p]) => p.s === 'done' && before.has(n)).length;
   const waiting = (c.waiting || 0) + (c.blocked || 0);
   const parts = (s.active
@@ -195,10 +196,13 @@ function summaryLine(s, c) {
 
 // A finished run against the last run of the same kind: the change of
 // its whole time, when it is 5 s and 5 % at least. A click compares each
-// package in the timeline.
+// package in the timeline. Only when both runs ran every package to its
+// end: an abort or a failure that blocks the rest cuts the time short.
 function timeChange(s) {
   const last = App.prev?.duration;
-  if (s.active || last == null || !s.elapsed) return '';
+  const c = s.counts || {};
+  if (s.active || last == null || !s.elapsed || !App.prev.complete
+      || (c.done || 0) + (c.failed || 0) !== s.total) return '';
   const d = s.elapsed - last;
   if (Math.abs(d) < Math.max(5, 0.05 * last)) return '';
   const tip = [`The last run (${fmtWhen(App.prev.at)}) took ${fmtDur(last)}.`];

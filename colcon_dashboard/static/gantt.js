@@ -36,17 +36,21 @@ function resolveCmp() {
   let ref = null;
   if (cmpKey === 'last' && prev) {
     ref = { label: `the last run (${fmtWhen(prev.at)})`, dur: prev.last || prev.durations,
-            failed: prev.failed, duration: prev.duration };
+            failed: prev.failed, unfinished: prev.unfinished, duration: prev.duration,
+            complete: prev.complete };
   } else if (cmpKey === 'usual' && prev) {
     ref = { label: prev.runs > 1 ? `the usual time (the median of ${prev.runs} runs)`
                                  : `the last run (${fmtWhen(prev.at)})`,
-            dur: prev.durations, failed: prev.failed, duration: null };
+            dur: prev.durations, failed: prev.failed, unfinished: prev.unfinished, duration: null };
   } else if (outcomes.has(cmpKey)) {
     const o = outcomes.get(cmpKey);
     ref = { label: `the run of ${fmtWhen(o.at)}`, dur: o.pkg_durations,
-            failed: o.failed_names, duration: o.duration };
+            failed: o.failed_names, unfinished: o.unfinished_names, duration: o.duration,
+            complete: o.complete };
   }
-  App.cmp = ref && { ...ref, key: cmpKey, dur: ref.dur || {}, failed: new Set(ref.failed || []) };
+  // untimed: in that run, but failed or never finished there, so not new
+  App.cmp = ref && { ...ref, key: cmpKey, dur: ref.dur || {},
+                     untimed: new Set([...(ref.failed || []), ...(ref.unfinished || [])]) };
 }
 
 // a package that finished in both runs: its seconds more (+) or less (-)
@@ -70,16 +74,19 @@ const fmtChange = d => (d > 0 ? '+' : '−') + fmtDur(Math.abs(d));
 function cmpSummary() {
   const el = $('#gcmpSum');
   if (!App.cmp) { el.textContent = ''; el.title = ''; return; }
-  let slower = 0, faster = 0, added = 0;
+  let slower = 0, faster = 0, added = 0, unfinished = 0;
   for (const [name, p] of Object.entries(App.pkgs)) {
+    if (p.s !== 'done' && p.s !== 'failed') unfinished++;
     if (!p.t0) continue;
     const ref = App.cmp.dur[name];
     const d = pkgChange(name, p);
     if (d != null && notable(d, ref)) { if (d > 0) slower++; else faster++; }
-    else if (ref == null && !App.cmp.failed.has(name)) added++;
+    else if (ref == null && !App.cmp.untimed.has(name)) added++;
   }
   const parts = [];
-  if (!App.active && App.cmp.duration != null && App.elapsedBase) {
+  // the whole time compares only when both runs ran every package to its end
+  if (!App.active && !unfinished && App.cmp.complete && App.cmp.duration != null
+      && App.elapsedBase) {
     const d = App.elapsedBase - App.cmp.duration;
     if (Math.abs(d) >= 1) parts.push(`<b class="${d > 0 ? 'slow' : 'fast'}">${fmtChange(d)}</b> in all`);
   }
@@ -297,7 +304,7 @@ export function drawGantt() {
     } else if (r.ref) { r.ref.remove(); r.ref = null; }
     const d = pkgChange(name, p);
     const txt = d != null && notable(d, ref) ? fmtChange(d)
-      : App.cmp && ref == null && !App.cmp.failed.has(name) ? 'new' : null;
+      : App.cmp && ref == null && !App.cmp.untimed.has(name) ? 'new' : null;
     if (txt) {
       if (!r.dt) {
         r.dt = svgEl('text', {}, svg);

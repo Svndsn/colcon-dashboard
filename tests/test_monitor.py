@@ -143,6 +143,44 @@ class ComputeOutcome(unittest.TestCase):
             json.dump({"outcome": "passed", "done": 1, "total": 1}, f)
         self.assertIsNone(self.mon._read_outcome(bdir))
 
+    def test_cache_of_0_11_1_is_recomputed_with_the_unfinished_packages(self):
+        bdir = make_build(self.ws, BUILD_ID,
+                          [queued(0.1, "a"), queued(0.1, "b"), started(0.2, "a"),
+                           ended(1.0, "a"), SHUTDOWN])
+        with open(os.path.join(bdir, self.mon.OUTCOME_FILE), "w") as f:
+            json.dump({"v": 4, "outcome": "aborted", "done": 1, "total": 2,
+                       "failed": 0, "aborted": 0, "skipped": 0, "test_failed": 0,
+                       "failed_names": [], "warnings": 0, "pkg_warnings": {},
+                       "args": "", "duration": 99.0, "pkg_durations": {"a": 0.8}}, f)
+        self.assertIsNone(self.mon._read_outcome(bdir))
+        info = self.mon.run_outcome(BUILD_ID)
+        self.assertEqual((info["unfinished_names"], info["complete"]), (["b"], False))
+        self.assertEqual(self.mon._read_outcome(bdir)["v"], self.mon.OUTCOME_V)
+        entry = self.mon.list_builds()["builds"][0]
+        self.assertFalse(entry["complete"])
+        self.assertNotIn("unfinished_names", entry)  # a long list, for each run
+
+    def test_unfinished_packages_and_complete_runs(self):
+        cases = (
+            # every package ran, one failed: the whole time compares
+            ([queued(0.1, "a"), queued(0.1, "b"), started(0.2, "a"), ended(1.0, "a", rc=2),
+              started(1.1, "b"), ended(2.0, "b")], [], True),
+            # Ctrl-C: a stops, b never starts
+            ([queued(0.1, "a"), queued(0.1, "b"), started(0.2, "a"),
+              ended(1.0, "a", rc="SIGINT")], ["a", "b"], False),
+            # a failure blocks b
+            ([queued(0.1, "a"), queued(0.1, "b"), started(0.2, "a"),
+              ended(1.0, "a", rc=2)], ["b"], False),
+            # colcon skipped b
+            ([queued(0.1, "a"), queued(0.1, "b"), started(0.2, "a"), ended(1.0, "a"),
+              event_line(1.1, "b", "JobSkipped")], ["b"], False),
+        )
+        for events, unfinished, complete in cases:
+            with self.subTest(unfinished=unfinished):
+                _, info = self.outcome(events + [SHUTDOWN])
+                self.assertEqual(info["unfinished_names"], unfinished)
+                self.assertIs(info["complete"], complete)
+
     def test_stdout_echoing_event_names_cannot_poison_durations(self):
         _, info = self.outcome([
             queued(0.1, "a"), started(50.0, "a"),
@@ -287,6 +325,78 @@ class PrevRunInfo(unittest.TestCase):
         self.assertNotIn("a", prev["streaks"])
         self.assertEqual(first["pkg_durations"], {"a": 5.0, "b": 1.0})
         self.assertEqual(first["outcome"], "passed")
+
+    def graph_prev(self, ws):
+        """The prev part of the graph payload of the run BUILD_ID."""
+        mon = BuildMonitor(ws)
+        mon.scan_once()
+        deadline = time.time() + 5  # the prev outcome loads off-thread
+        while mon.prev_info is None and time.time() < deadline:
+            time.sleep(0.05)
+        mon.scan_once()  # the next scan publishes the loaded info
+        return json.loads(mon.graph_json)["prev"]
+
+    def test_an_aborted_last_run_does_not_compare_its_whole_time(self):
+        # a full run, a Ctrl-C after 11 s, then a full run again
+        full = [queued(0.0, "a"), queued(0.0, "b"), started(0.0, "a"), ended(100.0, "a"),
+                started(100.0, "b"), ended(300.0, "b"),
+                event_line(301.0, "-", "EventReactorShutdown")]
+        with tempfile.TemporaryDirectory() as ws:
+            make_build(ws, "build_2026-08-01_10-00-00", full)
+            make_build(ws, "build_2026-08-02_10-00-00", [
+                queued(0.0, "a"), queued(0.0, "b"), started(0.0, "a"),
+                ended(10.0, "a", rc="SIGINT"), event_line(11.0, "-", "EventReactorShutdown")])
+            make_build(ws, BUILD_ID, full)
+            prev = self.graph_prev(ws)
+            older = BuildMonitor(ws).run_outcome("build_2026-08-01_10-00-00")
+        self.assertEqual((prev["id"], prev["duration"]), ("build_2026-08-02_10-00-00", 11.0))
+        self.assertFalse(prev["complete"])  # so no "4m 50s slower than the last run"
+        self.assertEqual(prev["unfinished"], ["a", "b"])  # in that run: not new
+        self.assertTrue(older["complete"])
+
+    def test_packages_that_a_failure_blocked_in_the_last_run_are_not_new(self):
+        # the last run failed in a, so b and c never ran. d was not in it.
+        with tempfile.TemporaryDirectory() as ws:
+            make_build(ws, "build_2026-08-02_10-00-00", [
+                queued(0.0, "a"), queued(0.0, "b", deps=["a"]), queued(0.0, "c", deps=["a"]),
+                started(0.0, "a"), ended(5.0, "a", rc=2), SHUTDOWN])
+            make_build(ws, BUILD_ID, [queued(0.0, n) for n in "abcd"]
+                       + [started(0.0, n) for n in "abcd"]
+                       + [ended(5.0, n) for n in "abcd"] + [SHUTDOWN])
+            prev = self.graph_prev(ws)
+        self.assertEqual((prev["last"], prev["failed"]), ({}, ["a"]))
+        self.assertEqual(prev["unfinished"], ["b", "c"])
+        self.assertFalse(prev["complete"])
+
+    def test_failure_streaks_reach_past_a_last_run_without_the_package(self):
+        # b fails in runs 01 and 02. Run 03 is --packages-select a, or stops
+        # before it reaches b. c failed in 01 but passed in 02: no streak.
+        for b_in_03, a_rc in (([], 0), ([queued(0.0, "b")], "SIGINT")):
+            with self.subTest(a_rc=a_rc), tempfile.TemporaryDirectory() as ws:
+                for day, c_rc in (("01", 1), ("02", 0)):
+                    make_build(ws, f"build_2026-08-{day}_10-00-00", [
+                        queued(0.0, "a"), queued(0.0, "b"), queued(0.0, "c"),
+                        started(0.0, "a"), ended(5.0, "a"), started(5.0, "b"),
+                        ended(6.0, "b", rc=2), started(6.0, "c"), ended(7.0, "c", rc=c_rc),
+                        SHUTDOWN])
+                make_build(ws, "build_2026-08-03_10-00-00", [queued(0.0, "a")] + b_in_03
+                           + [started(0.0, "a"), ended(5.0, "a", rc=a_rc), SHUTDOWN])
+                prev = BuildMonitor(ws)._find_prev_outcome(BUILD_ID)
+            self.assertEqual((prev["id"], prev["failed_names"]), ("build_2026-08-03_10-00-00", []))
+            b = prev["streaks"]["b"]  # the page: "failing for 3 runs"
+            self.assertEqual((b["n"], b["since"], b["ok"]), (2, "build_2026-08-01_10-00-00", None))
+            self.assertNotIn("c", prev["streaks"])
+
+    def test_failure_streaks_read_no_run_when_nothing_failed(self):
+        with tempfile.TemporaryDirectory() as ws:
+            for day in range(1, 9):
+                make_build(ws, f"build_2026-08-0{day}_10-00-00", [
+                    queued(0.0, "a"), started(0.0, "a"), ended(5.0, "a"), SHUTDOWN])
+            mon = BuildMonitor(ws)
+            with mock.patch.object(mon, "_read_outcome", wraps=mon._read_outcome) as read:
+                prev = mon._find_prev_outcome(BUILD_ID)
+        self.assertEqual(prev["streaks"], {})
+        self.assertEqual(read.call_count, 5)  # the runs of the medians only
 
     def test_first_run_has_no_prev(self):
         tmp = tempfile.TemporaryDirectory()

@@ -185,7 +185,7 @@ class BuildMonitor:
         return os.path.join(self.log_base, candidates[-1]) if candidates else None
 
     OUTCOME_FILE = ".colcon-dashboard.json"
-    OUTCOME_V = 4  # bump when _compute_outcome grows new fields
+    OUTCOME_V = 5  # bump when _compute_outcome grows new fields
 
     def _read_outcome(self, build_dir):
         try:
@@ -203,6 +203,7 @@ class BuildMonitor:
         total = done = failed = aborted = skipped = 0
         test_failed = set()  # names: colcon test keeps their rc at 0
         failed_names = []    # for "newly failing since the last build"
+        queued = set()       # names: the job set of the run
         warnings = {}        # per-package warning lines
         shutdown = False
         starts = {}     # name bytes -> start t
@@ -215,6 +216,9 @@ class BuildMonitor:
                     last_line = line
                     if b"JobQueued" in line:
                         total += 1
+                        m = EVENT_RE.match(line)
+                        if m and m.group(3) == b"JobQueued":
+                            queued.add(m.group(2))
                     elif b"JobStarted" in line:
                         # verify the event type: a StdoutLine may echo it
                         m = EVENT_RE.match(line)
@@ -272,6 +276,10 @@ class BuildMonitor:
         m = EVENT_RE.match(last_line)
         if m:
             duration = round(float(m.group(1)), 1)
+        # queued, but never ended with a return code: aborted, skipped, or
+        # blocked. Such a package was in the run, so it is not new there.
+        unfinished = sorted({n.decode("utf-8", "replace") for n in queued}
+                            - set(durations) - set(failed_names))
         info = {"v": self.OUTCOME_V, "outcome": outcome, "done": done,
                 "total": total, "failed": failed, "aborted": aborted,
                 "skipped": skipped, "test_failed": len(test_failed),
@@ -281,7 +289,10 @@ class BuildMonitor:
                 "args": summarize_args(parse_namespace(
                     os.path.join(build_dir, "logger_all.log"))),
                 "duration": duration,
-                "pkg_durations": durations}
+                "pkg_durations": durations,
+                "unfinished_names": unfinished,
+                # every job ran to its end: only then does the whole time compare
+                "complete": bool(queued) and not unfinished}
         try:
             with open(os.path.join(build_dir, self.OUTCOME_FILE), "w") as f:
                 json.dump(info, f)
@@ -397,7 +408,8 @@ class BuildMonitor:
             info = self._read_outcome(bdir)
             if info:
                 entry.update({k: v for k, v in info.items()
-                              if k not in ("v", "pkg_durations", "pkg_warnings")})
+                              if k not in ("v", "pkg_durations", "pkg_warnings",
+                                           "unfinished_names")})
             elif not (name == self.build_id
                       and getattr(self, "active_flag", False)):
                 pending.append(name)
@@ -455,8 +467,10 @@ class BuildMonitor:
             for pkg, sec in (info.get("pkg_durations") or {}).items():
                 samples.setdefault(pkg, []).append(sec)
         nearest = found[0]
+        # the failures of all these runs: the nearest run can lack a package
+        # (--packages-select, an abort) that failed in the runs before it
         nearest["streaks"] = self._fail_streaks(
-            names, nearest.get("failed_names") or [])
+            names, {pkg for info in found for pkg in info.get("failed_names") or []})
         nearest["median_durations"] = {
             pkg: sorted(v)[len(v) // 2] if len(v) % 2 else
             round((sorted(v)[len(v) // 2 - 1] + sorted(v)[len(v) // 2]) / 2, 1)
@@ -468,7 +482,7 @@ class BuildMonitor:
 
     def _fail_streaks(self, names, failed):
         """How long each package in failed (the failures of the nearest
-        earlier run) failed. names are the earlier runs, the newest first.
+        earlier runs) failed. names are the earlier runs, the newest first.
         For each package: n, the runs in a row that it failed in; since,
         the first run of that streak; ok, the last run where it passed
         (None when no kept run did). A run without the package, for
@@ -510,6 +524,7 @@ class BuildMonitor:
         return {"id": run_id, "at": parse_build_id_time(run_id),
                 **{k: info.get(k) for k in ("outcome", "duration", "total",
                                             "failed_names", "pkg_durations",
+                                            "unfinished_names", "complete",
                                             "args")}}
 
     def _auto_prune(self):
@@ -757,6 +772,9 @@ class BuildMonitor:
                         "last": info.get("pkg_durations") or {},
                         "runs": info.get("runs", 1),
                         "failed": info.get("failed_names") or [],
+                        # in the last run, but never finished: not new
+                        "unfinished": info.get("unfinished_names") or [],
+                        "complete": bool(info.get("complete")),
                         "streaks": info.get("streaks") or {}}
             graph = {"build_id": build_id, "packages": graph_pkgs, "prev": prev}
             self._graph_key = graph_key

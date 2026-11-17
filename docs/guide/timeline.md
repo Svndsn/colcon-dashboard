@@ -35,9 +35,9 @@ The **Compare** menu shows why one run took longer than another. It draws the ti
 - **Usual times**: the median time of each package over up to five earlier runs.
 - An earlier run: any build or test run that the log directory still keeps.
 
-A label shows a change of 10 seconds, or a change of 2 seconds and 10 %. Beside the menu, a line gives the change of the whole run and counts the slower, faster, and new packages. Choose **Change** in the **Order** menu to see the largest changes on top.
+A label shows a change of 10 seconds, or a change of 2 seconds and 10 %. Beside the menu, a line gives the change of the whole run and counts the slower, faster, and new packages. It gives the change of the whole run only when both runs ran all their packages to the end, with no abort and no package that a failure blocked. Choose **Change** in the **Order** menu to see the largest changes on top.
 
-After a build, the [progress line](index.md#progress-line) shows how much slower or faster the build was than the last run. Click it to open the timeline with this comparison.
+After a build, the [progress line](index.md#progress-line) shows how much slower or faster the build was than the last run, when both runs ran all their packages to the end. Click it to open the timeline with this comparison.
 
 ## While the build runs
 

@@ -51,7 +51,7 @@ The first time the picker opens, it asks before it searches your home folder for
 ![The build picker of Autoware: each build with its outcome, its duration, and the change against the previous build](../assets/screens/builds-light.webp#only-light){ .cd-narrow }
 ![The build picker, dark theme](../assets/screens/builds-dark.webp#only-dark){ .cd-narrow }
 
-The build picker lists every build and every `colcon test` run of the workspace. Each row shows the outcome, the package counts, the log size, and the duration. The duration also shows the change against the previous run of the same kind: a slower run shows `+3:12` in red, and a faster run shows `−1:04` in green.
+The build picker lists every build and every `colcon test` run of the workspace. Each row shows the outcome, the package counts, the log size, and the duration. The duration also shows the change against the previous run of the same kind: a slower run shows `+3:12` in red, and a faster run shows `−1:04` in green. The change shows only when both runs ran all their packages to the end.
 
 - Click a run to open it. The whole page then shows that run, and the address gets a `build` parameter, so you can share the link.
 - The 🗑 button deletes the logs of one run. **Prune** keeps the newest three runs of each kind. The server never deletes a run that still writes its logs.
@@ -71,7 +71,7 @@ The progress bar fills as the build advances: green for done, moving blue stripe
 
 During a build, the line under the bar reads, for example, "131 of 502 packages built · 3m 12s". Then it counts the building, ready, waiting, and failed packages. At the end, it shows the build rate and the estimated time left. The estimate uses the package durations of the previous build.
 
-After the build, the line reads, for example, "502 packages built in 8m 47s". When packages printed compiler or CMake warnings, the line shows the warning count. Hold the mouse over the count to see the packages, and click it to open the first warning. When the whole time changed by 5 seconds and 5 % against the last run of the same kind, the line shows the change, for example "1m 25s slower than the last run". Click it to compare each package in the [timeline](timeline.md#compare-with-another-run).
+After the build, the line reads, for example, "502 packages built in 8m 47s". When packages printed compiler or CMake warnings, the line shows the warning count. Hold the mouse over the count to see the packages, and click it to open the first warning. When the whole time changed by 5 seconds and 5 % against the last run of the same kind, the line shows the change, for example "1m 25s slower than the last run". It shows the change only when both runs ran all their packages to the end, with no abort and no package that a failure blocked. Click it to compare each package in the [timeline](timeline.md#compare-with-another-run).
 
 ## System meters
 

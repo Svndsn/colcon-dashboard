@@ -612,11 +612,13 @@ export async function openBuildPicker(retry) {
   list.appendChild(live);
   // total duration, and the delta against the previous run of the
   // same kind (test runs never compare against builds)
+  // the time of the previous run of the same kind, when it ran every
+  // package to its end: an aborted or blocked run is short for no reason
   const olderDuration = i => {
     const kind = builds[i].id.split('_')[0];
     for (let j = i + 1; j < builds.length; j++) {
       if (builds[j].id.split('_')[0] === kind
-          && builds[j].duration != null) return builds[j].duration;
+          && builds[j].duration != null) return builds[j].complete ? builds[j].duration : null;
     }
     return null;
   };
@@ -627,7 +629,7 @@ export async function openBuildPicker(retry) {
     let durHtml = '';
     if (b.duration != null) {
       durHtml = `<span class="wmeta">${fmtDur(b.duration)}</span>`;
-      const prev = olderDuration(i);
+      const prev = b.complete ? olderDuration(i) : null;
       if (prev != null && Math.abs(b.duration - prev) >= 2) {
         const d = b.duration - prev;
         durHtml += `<span class="wdelta ${d > 0 ? 'dplus' : 'dminus'}"` +

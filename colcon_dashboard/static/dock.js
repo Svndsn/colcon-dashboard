@@ -606,7 +606,8 @@ export function createFailPane() {
   updateCloseAll();
 }
 
-// new: it did not fail in the last run. Else: how many runs in a row it fails.
+// new: no failure streak, so it did not fail in the last run that had it.
+// Else: how many runs in a row it fails.
 function failChip(name) {
   const k = failStreak(App.prev, name);
   if (k) {
@@ -614,8 +615,8 @@ function failChip(name) {
       + (k.ok ? `. It last passed in the run of ${fmtWhen(k.ok)}` : ', and passed in no kept run');
     return `<span class="chip streak" title="${esc(tip)}">failing for ${k.runs} runs</span>`;
   }
-  return App.prev?.failed && !App.prev.failed.includes(name)
-    ? '<span class="chip newfail" title="it did not fail in the last run">new</span>' : '';
+  return App.prev
+    ? '<span class="chip newfail" title="it did not fail in the last run that had it">new</span>' : '';
 }
 
 export function buildFailItem(name, st) {
