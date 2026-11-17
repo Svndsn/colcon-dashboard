@@ -4,9 +4,10 @@ import { App } from './state.js';
 import { $, fmtDur } from './util.js';
 
 /* ---------------- tab progress + notifications ----------------
-   The tab title and favicon mirror the build, so a background tab
-   still tells the story. The favicon is the logo itself: its liquid
-   fills with the build, and its knob turns red on a failure. The bell cycles off -> notify -> notify with
+   The tab title, the favicon, and the logo in the header mirror the
+   build, so a background tab still tells the story. The favicon is the
+   logo itself: its liquid fills with the build, and its knob turns red
+   on a failure. The bell cycles off -> notify -> notify with
    a chime; desktop notifications fire when a build finishes or first
    fails, and only while the page is not focused.
    A page on the same machine as the server hands the bell to the server
@@ -19,7 +20,8 @@ let prevActive = null;
 let failNotified = false;
 let audioCtx = null;
 let lastIcon = null;
-let lastLogo = {};
+let lastLook = {};
+let lastBrand = null;
 const BASE_TITLE = document.title;
 // the tab strip follows the browser's scheme, not the page theme
 const darkTabs = matchMedia('(prefers-color-scheme: dark)');
@@ -50,21 +52,48 @@ function syncServer() {
   }
 }
 
-// logo: settings for logo.js, e.g. { progress: 0.4, knob: KNOB.failed };
-// {} is the plain logo
-function setFavicon(logo) {
-  const key = JSON.stringify(logo) + darkTabs.matches;
+// look: the build state for the logo, e.g. { progress: 0.4, knob: 'failed' };
+// {} is the plain logo. The settings for logo.js depend on the background:
+// the green of a finished build is lighter on a dark one.
+function logoFor(look, dark) {
+  if (!look.knob) return look;
+  const green = (dark ? PALETTES.richDark : PALETTES.richLight).green;
+  return { ...look, knob: look.knob === 'done' ? green : KNOB[look.knob] };
+}
+
+const logoUrl = (look, dark) =>
+  'data:image/svg+xml,' + encodeURIComponent(svg(logoFor(look, dark), 'rich', dark, 64));
+
+function setFavicon(look) {
+  const key = JSON.stringify(look) + darkTabs.matches;
   if (key === lastIcon) return;
   lastIcon = key;
-  lastLogo = logo;
+  lastLook = look;
   // index.html starts with a light and a dark icon; one live icon replaces both
   const links = [...document.querySelectorAll('link[rel="icon"]')];
   links.slice(1).forEach(l => l.remove());
   links[0].removeAttribute('media');
-  links[0].href = 'data:image/svg+xml,'
-    + encodeURIComponent(svg(logo, 'rich', darkTabs.matches, 64));
+  links[0].href = logoUrl(look, darkTabs.matches);
 }
-darkTabs.addEventListener('change', () => setFavicon(lastLogo));
+darkTabs.addEventListener('change', () => setFavicon(lastLook));
+
+// The logo in the header shows the same state. It has an image for each
+// theme: both redraw, and the theme shows one.
+function setBrand(look, what) {
+  const brand = $('#topbar .brand');
+  if (!brand) return;
+  brand.title = what ? `Colcon Dashboard: ${what}` : 'Colcon Dashboard';
+  const key = JSON.stringify(look);
+  if (key === lastBrand) return;
+  lastBrand = key;
+  for (const img of brand.querySelectorAll('img.logo'))
+    img.src = logoUrl(look, img.classList.contains('dark'));
+}
+
+function showLogo(look, what = null) {
+  setFavicon(look);
+  setBrand(look, what);
+}
 
 function wsName() {
   return (App.workspace || '').split('/').filter(Boolean).pop() || 'colcon';
@@ -74,22 +103,22 @@ function applyTab(s) {
   const c = s.counts || {};
   // whole percent steps, so the icon redraws at most 100 times a build
   const done = s.total ? Math.round(100 * (c.done || 0) / s.total) / 100 : 0;
+  const run = s.verb === 'test' ? 'the test run' : 'the build';
   if (s.active) {
     document.title = `[${Math.round(done * 100)}%] ${wsName()}`;
-    setFavicon({ progress: done });
+    showLogo({ progress: done }, `${run} is ${Math.round(done * 100)}% done`);
   } else if (c.failed) {
     document.title = `✗ ${wsName()}`;
-    setFavicon({ progress: done, knob: KNOB.failed });
+    showLogo({ progress: done, knob: 'failed' }, `${run} failed`);
   } else if (s.total && (c.done || 0) === s.total) {
     document.title = `✓ ${wsName()}`;
-    const green = (darkTabs.matches ? PALETTES.richDark : PALETTES.richLight).green;
-    setFavicon({ progress: 1, knob: green });
+    showLogo({ progress: 1, knob: 'done' }, `${run} finished`);
   } else if (c.aborted) {
     document.title = `◌ ${wsName()}`;
-    setFavicon({ progress: done, knob: KNOB.aborted });
+    showLogo({ progress: done, knob: 'aborted' }, `${run} stopped`);
   } else {
     document.title = BASE_TITLE;
-    setFavicon({});
+    showLogo({});
   }
 }
 
@@ -246,6 +275,6 @@ on('build-changed', () => {
 on('state-lost', () => {
   // no build state to mirror: a stale "[42%]" title would lie
   document.title = BASE_TITLE;
-  setFavicon({});
+  showLogo({});
   prevActive = null;  // reconnecting must not fire a stale notification
 });

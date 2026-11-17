@@ -101,7 +101,7 @@ The bell button turns on notifications: the build finished, the build failed, or
 
 ## Browser tab and theme
 
-The browser tab shows the build also in the background. The title shows `[42%] workspace` while the build runs, and then ✓ or ✗. The icon changes color with it.
+The browser tab shows the build also in the background. The title shows `[42%] workspace` while the build runs, and then ✓ or ✗. The icon is the logo: its green liquid fills as packages finish, and its knob turns red on a failure and green at the end. The logo in the top left corner of the page shows the same state.
 
 The theme button switches between the light and the dark theme. Every view changes at once, also the 3D view.
 
