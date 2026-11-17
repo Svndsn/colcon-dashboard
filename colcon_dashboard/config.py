@@ -21,6 +21,7 @@ optional, and the command line always wins:
     browser = auto
 
     [discover]
+    scan_home = ask
     extra_roots = /mnt/data, ~/ros
 
     [notify]
@@ -91,7 +92,11 @@ TEMPLATE = """\
 #browser = auto
 
 [discover]
-# More directories for the workspace scan, next to your home directory.
+# Search your home directory for colcon workspaces: ask (the workspace
+# picker asks once and saves the answer here), yes, or no.
+#scan_home = ask
+
+# More directories for the workspace scan.
 # Separate them with commas or newlines. ~ expands to your home.
 #extra_roots = /mnt/data, ~/ros
 
@@ -124,8 +129,8 @@ def write_template(path=None):
     return path
 
 
-def save_extra_roots(roots, path=None):
-    """Write roots as the [discover] extra_roots line of the ini file.
+def save_value(section, key, value, path=None):
+    """Write "key = value" into [section] of the ini file.
 
     Edits that one line in place, so every comment and every other key
     stays as the user wrote it. A missing file starts from the template.
@@ -141,17 +146,17 @@ def save_extra_roots(roots, path=None):
         return None
     if lines and not lines[-1].endswith("\n"):
         lines[-1] += "\n"
-    new = "extra_roots = %s\n" % ", ".join(roots)
+    new = "%s = %s\n" % (key, value)
     head = next((i for i, ln in enumerate(lines)
-                 if ln.strip().lower() == "[discover]"), None)
+                 if ln.strip().lower() == "[%s]" % section), None)
     if head is None:
-        lines += ["\n", "[discover]\n", new]
+        lines += ["\n", "[%s]\n" % section, new]
     else:
         end = next((i for i in range(head + 1, len(lines))
                     if lines[i].startswith("[")), len(lines))
-        key = re.compile(r"extra_roots\s*[=:]")
+        pattern = re.compile(r"%s\s*[=:]" % re.escape(key))
         at = next((i for i in range(head + 1, end)
-                   if key.match(lines[i])), None)
+                   if pattern.match(lines[i])), None)
         if at is not None:
             stop = at + 1  # an indented line continues the value
             while stop < end and lines[stop].strip() and \
@@ -161,7 +166,7 @@ def save_extra_roots(roots, path=None):
         else:
             # below the commented example, else under the header
             hint = [i for i in range(head + 1, end)
-                    if re.match(r"#\s*extra_roots", lines[i])]
+                    if re.match(r"#\s*%s\s*[=:]" % re.escape(key), lines[i])]
             lines.insert((hint[-1] if hint else head) + 1, new)
     tmp = path + ".tmp"
     try:
@@ -172,6 +177,16 @@ def save_extra_roots(roots, path=None):
     except OSError:
         return None
     return path
+
+
+def save_extra_roots(roots, path=None):
+    """Write roots as the [discover] extra_roots line of the ini file."""
+    return save_value("discover", "extra_roots", ", ".join(roots), path)
+
+
+def save_scan_home(value, path=None):
+    """Write the [discover] scan_home line: "yes" or "no"."""
+    return save_value("discover", "scan_home", value, path)
 
 
 class Config:
@@ -196,6 +211,8 @@ class Config:
         self.claude_bin = self._get(cp, "ai", "claude_bin")
         self.editor_url = self._get(cp, "ui", "editor_url")
         self.browser = self._get(cp, "ui", "browser")
+        # "ask" until the user answers the question in the workspace picker
+        self.scan_home = self._get_choice(cp, "discover", "scan_home")
         self.extra_roots = self._get_list(cp, "discover", "extra_roots")
         self.notify_command = self._get(cp, "notify", "command")
 
@@ -225,6 +242,16 @@ class Config:
             return []
         return [os.path.expanduser(v.strip())
                 for v in re.split(r"[,\n]", value) if v.strip()]
+
+    @classmethod
+    def _get_choice(cls, cp, section, key):
+        """yes, no, or ask: unset and unknown values ask."""
+        value = (cls._get(cp, section, key) or "").lower()
+        if value in ("1", "true", "yes", "on"):
+            return "yes"
+        if value in ("0", "false", "no", "off"):
+            return "no"
+        return "ask"
 
     @classmethod
     def _get_bool(cls, cp, section, key):

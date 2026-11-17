@@ -1296,6 +1296,106 @@ body.nows #wspick .wshero { display: block; text-align: center; margin-bottom: 2
 .wsrow .wmeta { font-size: var(--fs-xs); color: var(--muted); white-space: nowrap; }
 .wsrow .wmeta .live { color: var(--accent); font-weight: 650; }
 .wsempty { color: var(--muted); padding: 10px; }
+.wsempty.scanning { display: flex; align-items: center; gap: 8px; }
+.spin {
+  width: 12px;
+  height: 12px;
+  border: 2px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2.4s; } }
+
+/* the main action of a card: the accent blue, glossy on top like the logo */
+button.primary {
+  color: #fff;
+  font-weight: 600;
+  text-shadow: 0 -1px 0 rgba(0, 0, 0, 0.2);
+  background: linear-gradient(var(--shine), transparent 50%),
+              linear-gradient(var(--accent), color-mix(in srgb, var(--accent) 72%, #000));
+  border-color: color-mix(in srgb, var(--accent) 70%, #000);
+}
+button.primary:hover {
+  color: #fff;
+  border-color: color-mix(in srgb, var(--accent) 60%, #000);
+  background: linear-gradient(var(--shine), transparent 50%),
+              linear-gradient(color-mix(in srgb, var(--accent) 88%, #fff), var(--accent));
+}
+button.primary:active {
+  background: linear-gradient(color-mix(in srgb, var(--accent) 72%, #000), var(--accent));
+}
+
+/* the one-time question in the workspace picker: scan the home folder? */
+.scancard {
+  display: flex;
+  gap: 14px;
+  margin: 10px 0 6px;
+  padding: 16px 18px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--grid));
+  border-radius: var(--r-l);
+  background:
+    radial-gradient(130% 120% at 0% 0%, color-mix(in srgb, var(--accent) 9%, transparent), transparent 62%),
+    var(--surface);
+  animation: drop-in 160ms ease-out;
+}
+.scancard .sc-art {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--r-l);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+.scancard .sc-art svg.ic { width: 22px; height: 22px; }
+.scancard .sc-body { min-width: 0; }
+.scancard h2 { margin: 1px 0 3px; font-size: var(--fs-l); font-weight: 650; }
+.scancard p { margin: 0; color: var(--ink2); }
+.scancard code { font: var(--fs-s) var(--mono); }
+.scancard .sc-safe { display: flex; align-items: flex-start; gap: 6px; margin-top: 8px; font-size: var(--fs-s); color: var(--muted); }
+.scancard .sc-safe svg.ic { width: 13px; height: 13px; margin-top: 2px; color: var(--good); }
+.scancard .sc-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.scancard .sc-btns button:not(.linkbtn) { padding: 5px 12px; }
+.scancard .sc-btns .linkbtn { margin-left: 6px; font-size: var(--fs-s); color: var(--muted); }
+.scancard .sc-btns .linkbtn:hover { color: var(--accent); }
+.scancard .sc-note { margin-top: 10px; font-size: var(--fs-xs); color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .scancard { animation: none; } }
+
+/* after "Not now": the scan stays one click away, without a question */
+.scanoff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 8px 10px;
+  border: 1px dashed var(--baseline);
+  border-radius: var(--r-m);
+  font-size: var(--fs-s);
+  color: var(--muted);
+}
+.scanoff > span { flex: 1; min-width: 180px; }
+.scanoff button:not(.linkbtn) { padding: 2px 10px; font-size: var(--fs-s); }
+.scanoff .linkbtn { font-size: var(--fs-s); }
+
+/* below the finds: the folders that the last scan searched */
+.scanscope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  padding: 8px 10px 2px;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+.scanscope code { font-family: var(--mono); color: var(--ink2); }
+
+/* the scan roots: the home folder row is a switch */
+.roots .homerow { align-items: center; cursor: pointer; }
+.roots .homerow input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+#wsroots .rootintro { margin: 0 10px 8px; font-size: var(--fs-s); color: var(--muted); }
 #wspick .wsadd,
 #bpick .wsadd,
 .roots .wsadd { display: flex; gap: 8px; margin-top: 12px; }
@@ -1323,7 +1423,7 @@ body.nows #wspick .wshero { display: block; text-align: center; margin-bottom: 2
 .linkbtn:hover { color: var(--accent); text-decoration: underline; }
 .linkbtn:disabled { color: var(--muted); text-decoration: none; cursor: default; }
 #wspick #wsinput { display: block; width: 100%; box-sizing: border-box; padding: 7px 10px; font-size: var(--fs-m); margin-bottom: 4px; }
-#wspick #wsinput:focus { outline: none; border-color: var(--accent); }
+#wspick #wsinput:focus, .roots .rootinput:focus { outline: none; border-color: var(--accent); }
 #wslist { max-height: 60vh; gap: 2px; overflow-x: hidden; }
 /* section headers: Starred, Recent, Found on disk */
 .wssec {

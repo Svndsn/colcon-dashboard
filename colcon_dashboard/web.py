@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, quote, unquote, urlparse
 
 from . import __version__, notify, service
 from .ai import CLAUDE_BIN
-from .config import CONFIG, save_extra_roots
+from .config import CONFIG, save_extra_roots, save_scan_home
 from .events import BUILD_DIR_RE
 from .monitor import prune_builds, remove_build_dir
 from .registry import (check_update, discover_all, install_source, update_check_on,
@@ -233,6 +233,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, json.dumps({"ok": True}))
         if path == "/api/scan-roots/set":
             return self._set_scan_roots(q)
+        if path == "/api/scan-home/set":
+            return self._set_scan_home(q)
         if path in ("/api/builds/delete", "/api/builds/prune"):
             return self._manage_builds(path, q)
         if path.startswith("/api/analyze/"):
@@ -298,6 +300,18 @@ class Handler(BaseHTTPRequestHandler):
         CONFIG.extra_roots = roots
         CONFIG.exists = True
         return self._send(200, json.dumps({"ok": True, "roots": roots}))
+
+    def _set_scan_home(self, q):
+        """Save the answer to "search your home directory?" in config.ini."""
+        value = q.get("value", [""])[0]
+        if value not in ("yes", "no"):
+            return self._send(400, json.dumps({"error": "value: yes or no"}))
+        if save_scan_home(value, CONFIG.path) is None:
+            return self._send(500, json.dumps(
+                {"error": "cannot write " + CONFIG.path}))
+        CONFIG.scan_home = value
+        CONFIG.exists = True
+        return self._send(200, json.dumps({"ok": True, "scan_home": value}))
 
     def _manage_builds(self, path, q):
         ws = q.get("ws", [None])[0]
@@ -387,6 +401,7 @@ class Handler(BaseHTTPRequestHandler):
                     "check_updates": update_check_on(),
                     "claude_bin": CONFIG.claude_bin,
                     "editor_url": CONFIG.editor_url,
+                    "scan_home": CONFIG.scan_home,
                     "extra_roots": CONFIG.extra_roots,
                     "browser": CONFIG.browser,
                 },
@@ -402,6 +417,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/workspaces":
             overview = self.registry.overview()
             overview["home"] = os.path.expanduser("~")
+            # the picker shows the scan question before it scans
+            overview["scan_home"] = CONFIG.scan_home
+            overview["scan_roots"] = CONFIG.extra_roots
             update = update_status()
             if update:
                 overview["update"] = update
@@ -409,14 +427,21 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/scan-roots":
             return self._send(200, json.dumps({
                 "home": os.path.expanduser("~"),
+                "scan_home": CONFIG.scan_home,
                 "roots": CONFIG.extra_roots,
                 "config_path": CONFIG.path,
             }))
         if path == "/api/discover":
+            # the home directory only after the user said yes to it
+            home = CONFIG.scan_home == "yes"
+            roots = list(CONFIG.extra_roots)
             found = [{"path": p, **self.registry.stats(p)}
-                     for p in discover_all(CONFIG.extra_roots)]
+                     for p in discover_all(roots, home=home)]
             found.sort(key=lambda w: -(w.get("builds") or 0))  # by use
-            return self._send(200, json.dumps({"workspaces": found}))
+            searched = ([os.path.expanduser("~")] if home else []) + roots
+            return self._send(200, json.dumps(
+                {"workspaces": found, "scan_home": CONFIG.scan_home,
+                 "searched": searched}))
 
         if path.startswith("/api/"):
             mon = self._monitor(q)

@@ -292,11 +292,13 @@ class ApiTest(unittest.TestCase):
         self.assertEqual(st, 400)
 
     def use_tmp_config(self):
-        saved = (CONFIG.path, CONFIG.exists, CONFIG.extra_roots)
+        saved = (CONFIG.path, CONFIG.exists, CONFIG.extra_roots,
+                 CONFIG.scan_home)
         CONFIG.path = os.path.join(self.tmp.name, "cfg", "config.ini")
         self.addCleanup(lambda: (setattr(CONFIG, "path", saved[0]),
                                  setattr(CONFIG, "exists", saved[1]),
-                                 setattr(CONFIG, "extra_roots", saved[2])))
+                                 setattr(CONFIG, "extra_roots", saved[2]),
+                                 setattr(CONFIG, "scan_home", saved[3])))
         return CONFIG.path
 
     def test_scan_roots_are_saved_in_config_ini(self):
@@ -315,6 +317,39 @@ class ApiTest(unittest.TestCase):
         st, body = self.post("/api/scan-roots/set")
         self.assertEqual(body["roots"], [])
         self.assertEqual(Config(path=path).extra_roots, [])
+
+    def test_home_is_scanned_only_after_a_yes(self):
+        path = self.use_tmp_config()
+        root = os.path.join(self.tmp.name, "roots")
+        os.makedirs(root, exist_ok=True)
+        calls = []
+
+        def fake_discover(roots, home=True):
+            calls.append((list(roots), home))
+            return []
+        with mock.patch("colcon_dashboard.web.discover_all", fake_discover):
+            # a new user: the picker asks first, so no home scan
+            self.assertEqual(json.loads(self.get("/api/workspaces")[1])
+                             ["scan_home"], "ask")
+            d = json.loads(self.get("/api/discover")[1])
+            self.assertEqual((d["scan_home"], d["searched"]), ("ask", []))
+            self.assertEqual(calls[-1], ([], False))
+            st, _ = self.post("/api/scan-home/set?value=maybe")
+            self.assertEqual(st, 400)
+            st, body = self.post("/api/scan-home/set?value=yes")
+            self.assertEqual((st, body["scan_home"]), (200, "yes"))
+            self.assertEqual(Config(path=path).scan_home, "yes")
+            d = json.loads(self.get("/api/discover")[1])
+            self.assertEqual(d["searched"], [os.path.expanduser("~")])
+            self.assertEqual(calls[-1], ([], True))
+            # "no" keeps the roots that the user added
+            self.post("/api/scan-roots/set?path=" + urllib.parse.quote(root))
+            self.post("/api/scan-home/set?value=no")
+            d = json.loads(self.get("/api/discover")[1])
+            self.assertEqual(d["searched"], [root])
+            self.assertEqual(calls[-1], ([root], False))
+            self.assertEqual(json.loads(self.get("/api/scan-roots")[1])
+                             ["scan_home"], "no")
 
     def test_scan_root_must_be_a_directory(self):
         self.use_tmp_config()
@@ -354,6 +389,13 @@ class DiscoverAll(unittest.TestCase):
             found = registry_mod.discover_all([tmp, tmp])
             self.assertEqual(found.count(ws), 1)
             self.assertIn(ws, registry_mod.discover_workspaces(tmp))
+
+    def test_home_false_never_walks_the_home_directory(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(registry_mod, "discover_workspaces",
+                                  return_value=[]) as walk:
+            registry_mod.discover_all([tmp], home=False)
+            walk.assert_called_once_with(tmp)
 
 
 if __name__ == "__main__":

@@ -36,16 +36,35 @@ editor_url =            ; e.g. vscode://file{path}:{line} - file:line log
 browser = auto          ; auto, chromium, firefox, or default
 
 [discover]
+scan_home = ask         ; yes, no, or ask - scan the home directory for
+                        ; workspaces. ask: the picker asks once.
 extra_roots =           ; e.g. /mnt/data, ~/ros - more directories for
-                        ; the workspace scan, next to your home directory.
+                        ; the workspace scan.
 
 [notify]
 command =               ; a command to run when a build ends
 ```
 
+## Home directory scan
+
+The workspace picker can scan your home directory for colcon workspaces. The scan reads only directory names, and it sends nothing off this computer. Before the first scan, the picker asks you:
+
+- **Scan my home folder**: the picker scans your home directory each time you open the dashboard.
+- **Choose folders…**: the picker scans only the scan roots that you add.
+- **Not now**: the picker does not scan your home directory.
+
+The picker saves your answer as the `scan_home` key in `config.ini` and does not ask again. Every browser and the app window use the same answer. Below the found workspaces, the picker names the directories that it scans automatically.
+
+To change the answer, click "Scan roots…" in the picker, or open the settings. Then set or clear the check box on the row of your home directory. You can also set the key in the file by hand:
+
+```ini
+[discover]
+scan_home = yes
+```
+
 ## Extra scan roots
 
-When the workspace picker opens for the first time, it searches your home directory for colcon workspaces. If your workspaces are on another drive, add their parent directories as scan roots.
+If your workspaces are on another drive, add their parent directories as scan roots. The picker scans the scan roots also when it does not scan your home directory.
 
 You can edit the scan roots in the page. Open the workspace picker and click "Scan roots…", or open the settings (the gear button). Type a directory and click Add. To change a root, edit its path and press Enter. To remove a root, click ✕. The page saves the list as the `extra_roots` key in `config.ini` and changes only that line. A change applies at once, with no restart.
 

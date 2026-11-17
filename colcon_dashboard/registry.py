@@ -518,13 +518,15 @@ def discover_workspaces(root=None, max_depth=4):
     return found
 
 
-def discover_all(extra_roots=()):
-    """discover_workspaces over the home directory plus extra_roots.
+def discover_all(extra_roots=(), home=True):
+    """discover_workspaces over extra_roots, and over the home directory
+    when home is true (the user allowed it: config scan_home).
 
     Overlapping roots find a workspace twice; keep its first find.
     """
     found, seen = [], set()
-    for root in [os.path.expanduser("~"), *extra_roots]:
+    roots = [os.path.expanduser("~")] if home else []
+    for root in [*roots, *extra_roots]:
         for d in discover_workspaces(root):
             real = os.path.realpath(d)
             if real not in seen:

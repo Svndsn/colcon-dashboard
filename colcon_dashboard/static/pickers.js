@@ -30,6 +30,12 @@ export let wsItems = [];  // the recents, plus the scan's finds
 // whole home directory, so reopening the picker reuses it
 let foundItems = null;
 let wsScanning = false;
+let rescanAfter = false;  // the scan places changed while a scan ran
+// The answer to "scan your home folder?": ask, yes, or no. The server
+// keeps it in config.ini, so every browser and the app window share it.
+let scanHome = 'ask';
+let scanRoots = [];  // the extra_roots list as the server last reported it
+let scanSearched = [];  // the directories that the last scan searched
 let wsQuery = '';
 let wsHome = '';
 const openGroups = new Set();  // expanded parent directories
@@ -100,7 +106,77 @@ function wsSection(list, title, extra) {
   list.appendChild(h);
 }
 
+// the picker scans by itself only where the user allowed it
+const canScan = () => scanHome === 'yes' || scanRoots.length > 0;
+
+// "a", "a and b", "a, b, and c"
+function listText(items) {
+  if (items.length < 3) return items.join(' and ');
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+}
+
+// The question that the picker asks once, before it reads anything in
+// the home folder. The answer goes to config.ini, so it never comes back.
+function scanCard() {
+  const card = document.createElement('div');
+  card.className = 'scancard';
+  card.setAttribute('role', 'group');
+  card.setAttribute('aria-labelledby', 'scancard-title');
+  card.innerHTML =
+    `<div class="sc-art" aria-hidden="true">${icon('folder')}</div>` +
+    '<div class="sc-body">' +
+      '<h2 id="scancard-title">Find your workspaces</h2>' +
+      '<p>The picker can scan your home folder (<code>~</code>) for colcon workspaces and list them here.</p>' +
+      `<p class="sc-safe">${icon('lock')}<span>It reads folder names only, 4 levels deep. Nothing leaves this computer.</span></p>` +
+      '<div class="sc-btns">' +
+        `<button class="primary sc-yes">${icon('search')}Scan my home folder</button>` +
+        '<button class="sc-pick" title="scan only the folders that you add">Choose folders…</button>' +
+        '<button class="linkbtn sc-no">Not now</button>' +
+      '</div>' +
+      '<p class="sc-note">The picker remembers your answer and does not ask again. You can change it later in Scan roots.</p>' +
+    '</div>';
+  card.querySelector('.sc-yes').onclick = () => saveScanHome(true);
+  card.querySelector('.sc-pick').onclick = async () => {
+    if (await saveScanHome(false)) showScanRoots(true);
+  };
+  card.querySelector('.sc-no').onclick = () => saveScanHome(false);
+  return card;
+}
+
+// after "Not now": one quiet line, so that the scan stays easy to find
+function scanOffRow() {
+  const row = document.createElement('div');
+  row.className = 'scanoff';
+  row.innerHTML = `${icon('folder')}<span>The picker does not scan your home folder.</span>` +
+    `<button class="sc-yes" title="scan the home folder from now on">${icon('search')}Turn on</button>` +
+    '<button class="linkbtn sc-pick">Choose folders…</button>';
+  row.querySelector('.sc-yes').onclick = () => saveScanHome(true);
+  row.querySelector('.sc-pick').onclick = () => showScanRoots(true);
+  return row;
+}
+
+// below the finds: where the picker looks by itself, so that a saved
+// "yes" stays visible and easy to take back
+function scanScope() {
+  const div = document.createElement('div');
+  div.className = 'scanscope';
+  const names = scanSearched.map(p => p === wsHome
+    ? 'your home folder' : `<code>${esc(tildePath(p))}</code>`);
+  div.innerHTML = `<span>Scans ${listText(names)} automatically.</span>` +
+    '<button class="linkbtn">Change…</button>';
+  div.querySelector('button').onclick = () => showScanRoots(true);
+  return div;
+}
+
 function renderFound(list, found) {
+  if (scanHome === 'ask' && !wsQuery) list.appendChild(scanCard());
+  if (!canScan()) {
+    if (scanHome === 'no' && !wsQuery) {
+      wsSection(list, 'Found on disk');
+      list.appendChild(scanOffRow());
+    }
+    return;
+  }
   const rescan = document.createElement('button');
   rescan.className = 'linkbtn';
   rescan.textContent = wsScanning ? 'Scanning…' : 'Rescan';
@@ -140,10 +216,14 @@ function renderFound(list, found) {
     list.appendChild(g);
     if (open) for (const m of members) list.appendChild(wsRow(m, true));
   }
-  if (!found.length && !wsScanning && !wsQuery) {
+  if (!found.length && wsScanning) {
     list.insertAdjacentHTML('beforeend',
-      '<div class="wsempty">No other workspaces found. Add a scan root to search more directories.</div>');
+      '<div class="wsempty scanning"><span class="spin"></span>Scanning…</div>');
+  } else if (!found.length && !wsQuery) {
+    list.insertAdjacentHTML('beforeend',
+      '<div class="wsempty">No other workspaces found. Add a scan root to search more folders.</div>');
   }
+  if (!wsQuery && !wsScanning && scanSearched.length) list.appendChild(scanScope());
 }
 
 export function renderWsList() {
@@ -181,17 +261,51 @@ function mergeFound() {
 }
 
 export async function scanWs() {
-  if (wsScanning) return;
+  if (wsScanning) {
+    rescanAfter = true;  // the running scan uses the old places
+    return;
+  }
   wsScanning = true;
   renderWsList();
   try {
     const d = await (await fetch('/api/discover')).json();
     foundItems = d.workspaces || [];
+    scanSearched = d.searched || [];
+    if (d.scan_home) scanHome = d.scan_home;
     wsItems = wsItems.filter(w => !w.found);  // a removed root drops its finds
     mergeFound();
   } catch (e) { /* server gone */ }
   wsScanning = false;
+  if (rescanAfter) {
+    rescanAfter = false;
+    return scanWs();
+  }
   renderWsList();
+}
+
+// scan again after a change of the places, or drop the finds when the
+// picker may not scan anywhere now
+function refreshFound() {
+  if (canScan()) return scanWs();
+  foundItems = null;
+  scanSearched = [];
+  wsItems = wsItems.filter(w => !w.found);
+  renderWsList();
+}
+
+export async function saveScanHome(on) {
+  try {
+    const r = await (await fetch(`/api/scan-home/set?value=${on ? 'yes' : 'no'}`,
+                                 { method: 'POST' })).json();
+    if (!r.ok) {
+      toast(`Not saved: ${esc(r.error)}`);
+      return false;
+    }
+    scanHome = r.scan_home;
+  } catch (e) { return false; /* server gone */ }
+  if (rootBoxes.size) loadScanRoots();
+  refreshFound();
+  return true;
 }
 
 export function showUpdateNote(update) {
@@ -247,18 +361,21 @@ export async function openWsPicker() {
   try {
     const d = await (await fetch('/api/workspaces')).json();
     wsHome = d.home || '';
+    scanHome = d.scan_home || 'ask';
+    scanRoots = d.scan_roots || [];
     wsItems = d.workspaces || [];
     if (foundItems) mergeFound();
     renderWsList();
     showUpdateNote(d.update);
-    if (!foundItems) scanWs();  // the first open scans by itself
+    // a new user has nothing to search yet: the question is the next step
+    const yes = $('#wslist .scancard .sc-yes');
+    if (first && yes && !$('#wslist .wsrow')) yes.focus();
+    if (!foundItems && canScan()) scanWs();  // the first open scans by itself
   } catch (e) {
     list.innerHTML = '<div class="wsempty">The server does not answer.</div>';
   }
 }
 
-// the extra_roots list as the server last reported it
-let scanRoots = [];
 // Scan root editors: the workspace picker holds one, the settings dialog
 // another. A save renders every one of them.
 const rootBoxes = new Set();
@@ -310,17 +427,25 @@ function rootRow(root, i) {
 
 function renderScanRoots(d) {
   scanRoots = d.roots || [];
+  scanHome = d.scan_home || scanHome;
   for (const box of rootBoxes) {
     const list = box.querySelector('.rootlist');
     list.innerHTML = '';
-    const home = document.createElement('div');
-    home.className = 'wsrow';
-    home.innerHTML = `<span class="wpath">${esc(d.home)}</span>` +
-      '<span class="tag">home</span>';
+    // the home folder: a switch, because it is the user's private space
+    const home = document.createElement('label');
+    home.className = 'wsrow homerow';
+    home.title = 'scan the home folder for workspaces';
+    home.innerHTML = `<input type="checkbox"${scanHome === 'yes' ? ' checked' : ''}>` +
+      `<span class="wpath">${esc(d.home)}</span>` +
+      '<span class="tag">home folder</span>';
+    const check = home.querySelector('input');
+    check.onchange = async () => {
+      if (!await saveScanHome(check.checked)) check.checked = !check.checked;
+    };
     list.appendChild(home);
     scanRoots.forEach((root, i) => list.appendChild(rootRow(root, i)));
     box.querySelector('.rootnote').textContent =
-      `Saved as extra_roots in ${d.config_path}. A change applies at once.`;
+      `Saved in ${d.config_path}. A change applies at once.`;
   }
 }
 
@@ -343,9 +468,10 @@ export async function saveScanRoots(roots) {
       toast(`Not saved: ${esc(r.error)}`);
       return false;
     }
+    scanRoots = r.roots;
   } catch (e) { return false; /* server gone */ }
   loadScanRoots();
-  scanWs();
+  refreshFound();
   return true;
 }
 
@@ -356,8 +482,10 @@ function showScanRoots(on) {
   $('#wsinput').hidden = on;
   $('#wspick .wssort').hidden = on;
   $('#rootsbtn').textContent = on ? 'Done' : 'Scan roots…';
-  if (on) loadScanRoots();
-  else if (!$('#wspick').hidden) $('#wsinput').focus();
+  if (on) {
+    loadScanRoots();
+    $('#wsrootbox .rootinput').focus();
+  } else if (!$('#wspick').hidden) $('#wsinput').focus();
 }
 
 function moveWsHighlight(step) {

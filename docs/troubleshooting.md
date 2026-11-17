@@ -16,9 +16,10 @@ The page shows "no colcon build logs found under …/log" when the workspace has
 
 ## A workspace is missing from the picker
 
-The picker scans your home directory and the [scan roots](configuration.md#extra-scan-roots). The scan goes four directory levels down. It skips hidden directories and symbolic links.
+The picker scans the [scan roots](configuration.md#extra-scan-roots), and your home directory if you allowed it. The scan goes four directory levels down. It skips hidden directories and symbolic links.
 
 - Paste the path of the workspace into the box of the picker, and press Enter.
+- If the picker does not scan your home directory, click "Scan roots…" in the picker and set the check box on the row of your home directory.
 - Or add the parent directory of the workspace as a scan root: click "Scan roots…" in the picker.
 
 ## The app window stays at "Loading…"

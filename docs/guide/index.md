@@ -44,7 +44,7 @@ The workspace picker has three sections: **Starred**, **Recent**, and **Found on
 - Click the star to move a workspace to **Starred**.
 - The sort menu orders each section by the last build, the build count, or the log size.
 
-The picker searches your home folder for colcon workspaces when it opens for the first time. To search other folders too, add them as [scan roots](../configuration.md#extra-scan-roots). When three or more found workspaces share a parent folder, they fold into one row.
+The first time the picker opens, it asks before it searches your home folder for colcon workspaces. It saves your answer and does not ask again. To change the answer, click **Scan roots…** (see [home directory scan](../configuration.md#home-directory-scan)). To search other folders too, add them as [scan roots](../configuration.md#extra-scan-roots). When three or more found workspaces share a parent folder, they fold into one row.
 
 ## Build picker
 
@@ -92,7 +92,7 @@ The gear button opens the settings at the right edge of the page. The panel stay
 
 - **This browser**: the theme, the notifications, the defaults of the log panes, and a reset of the page layout.
 - **Package names**: hide a common prefix such as `autoware_` in the labels.
-- **Scan roots**: more folders for the workspace picker.
+- **Scan roots**: the folders that the workspace picker searches, with a check box for your home folder.
 - **Server**: the configuration of the server, start at login, the [tray icon](../desktop-app.md#the-tray-icon), and the buttons to restart or stop the server.
 - **About**: the version, with a link to its release notes, the newest version, the command that upgrades your install, and links to this documentation, the GitHub project, and a form for a new issue. The deb package asks apt for the newest version, and other installs ask PyPI. Click **Check now** to check at once.
 

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from colcon_dashboard.config import (Config, TEMPLATE, save_extra_roots,
-                                     write_template)
+                                     save_scan_home, write_template)
 
 
 class ConfigFile(unittest.TestCase):
@@ -28,6 +28,14 @@ class ConfigFile(unittest.TestCase):
         self.assertIsNone(cfg.editor_url)
         self.assertEqual(cfg.extra_roots, [])
         self.assertFalse(cfg.check_updates)
+        self.assertEqual(cfg.scan_home, "ask")
+
+    def test_scan_home_answers(self):
+        for value, want in (("yes", "yes"), ("true", "yes"), ("on", "yes"),
+                            ("no", "no"), ("off", "no"), ("0", "no"),
+                            ("ask", "ask"), ("maybe", "ask"), ("", "ask")):
+            cfg = self.load("[discover]\nscan_home = %s\n" % value)
+            self.assertEqual(cfg.scan_home, want, value)
 
     def test_values_and_inline_comments(self):
         cfg = self.load(
@@ -112,7 +120,7 @@ class TemplateFile(unittest.TestCase):
     def test_template_documents_every_key(self):
         for key in ("host", "port", "log_base", "check_updates",
                     "auto_prune_keep", "claude_bin", "editor_url",
-                    "extra_roots"):
+                    "scan_home", "extra_roots"):
             self.assertIn(f"#{key} = ", TEMPLATE)
 
     def test_never_overwrites(self):
@@ -175,6 +183,29 @@ class SaveExtraRoots(unittest.TestCase):
     def test_empty_list_unsets(self):
         self.save("[discover]\nextra_roots = /a\n", [])
         self.assertEqual(Config(path=self.path).extra_roots, [])
+
+
+class SaveScanHome(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.path = os.path.join(self.tmp.name, "config.ini")
+
+    def test_uncomments_below_the_template_example(self):
+        with open(self.path, "w") as f:
+            f.write(TEMPLATE)
+        self.assertEqual(save_scan_home("yes", self.path), self.path)
+        with open(self.path) as f:
+            out = f.read()
+        self.assertIn("#scan_home = ask\nscan_home = yes\n", out)
+        self.assertEqual(Config(path=self.path).scan_home, "yes")
+        # a second answer replaces the line, and extra_roots stays apart
+        save_scan_home("no", self.path)
+        save_extra_roots(["/a"], self.path)
+        cfg = Config(path=self.path)
+        self.assertEqual((cfg.scan_home, cfg.extra_roots), ("no", ["/a"]))
+        with open(self.path) as f:
+            self.assertEqual(f.read().count("scan_home = no"), 1)
 
 
 if __name__ == "__main__":
