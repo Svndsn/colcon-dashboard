@@ -25,7 +25,7 @@ Every answer carries the `X-Dashboard-Version` header with the version of the se
 | `/api/discover` | Colcon workspaces found under the scan roots, and under the home directory when `scan_home` is `yes`. `searched` lists the directories that the scan searched |
 | `/api/scan-roots` | The home directory, the `scan_home` answer, the `extra_roots` list, and the config.ini path |
 | `/api/scan-roots/set?path=&path=` (POST) | Replaces the `extra_roots` list in config.ini. A new path must be a directory |
-| `/api/scan-home/set?value=` (POST) | Saves the `scan_home` answer (`yes` or `no`) in config.ini. If the server cannot write the file, `saved` is false and the answer applies until the server restarts |
+| `/api/scan-home/set?value=` (POST) | Saves the `scan_home` answer (`yes` or `no`) in config.ini. If the server cannot save it in the file, `saved` is false and the answer applies until the server restarts |
 | `/api/register?ws=` (POST) | Registers a workspace, like opening it in the page |
 | `/api/favorite?ws=&fav=1` (POST) | Pins or unpins a workspace |
 | `/api/builds/delete?ws=&build=` (POST) | Deletes the logs of one build |

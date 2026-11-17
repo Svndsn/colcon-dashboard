@@ -72,7 +72,7 @@ The workspace picker can scan your home directory for colcon workspaces. The sca
 - **Choose folders…**: the picker scans only the scan roots that you add.
 - **Not now**: the picker does not scan your home directory.
 
-The picker saves your answer as the `scan_home` key in `config.ini` and does not ask again. Every browser and the app window use the same answer. Below the found workspaces, the picker names the directories that it scans automatically. If the server cannot write `config.ini`, the answer applies until the server restarts.
+The picker saves your answer as the `scan_home` key in `config.ini` and does not ask again. Every browser and the app window use the same answer. Below the found workspaces, the picker names the directories that it scans automatically. If the server cannot save the answer in `config.ini`, the answer applies until the server restarts. The server cannot save it when it cannot write the file, or when configparser cannot read the file.
 
 When the server listens on the network (`host = 0.0.0.0`), every viewer of the dashboard can give the answer and see the found workspaces. This is the same as the other actions of the page, such as a server restart.
 

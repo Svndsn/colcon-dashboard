@@ -302,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
                 roots.append(p)
         if save_extra_roots(roots, CONFIG.path) is None:
             return self._send(500, json.dumps(
-                {"error": "cannot write " + CONFIG.path}))
+                {"error": "cannot save in " + CONFIG.path}))
         CONFIG.extra_roots = roots
         CONFIG.exists = True
         return self._send(200, json.dumps({"ok": True, "roots": roots}))

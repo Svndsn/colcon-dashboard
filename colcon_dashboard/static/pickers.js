@@ -308,7 +308,7 @@ export async function saveScanHome(on) {
     }
     scanHome = r.scan_home;
     if (r.saved === false) {
-      toast(`The answer applies until the server restarts: it cannot write ${esc(r.config_path)}.`, 'info');
+      toast(`The answer applies until the server restarts, because the server cannot save it in ${esc(r.config_path)}.`, 'info');
     }
   } catch (e) { return false; /* server gone */ }
   if (rootBoxes.size) loadScanRoots();

@@ -232,15 +232,17 @@ def save_value(section, key, value, path=None):
     want[section][key] = value
     if after != want:
         return None
+    try:
+        mode = stat.S_IMODE(os.stat(path).st_mode)
+    except FileNotFoundError:
+        mode = None
     tmp = path + ".tmp"
     try:
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(tmp, "w") as f:
+            if mode is not None:  # before the text: a token in [notify]
+                os.fchmod(f.fileno(), mode)  # command stays private
             f.write(out)
-        try:  # a token in [notify] command stays as private as before
-            os.chmod(tmp, stat.S_IMODE(os.stat(path).st_mode))
-        except FileNotFoundError:
-            pass
         os.replace(tmp, path)  # a crash mid-write never truncates it
     except OSError:
         return None
