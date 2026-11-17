@@ -1101,6 +1101,8 @@ body.offline #sysmeters { display: none; }
 .helpbox td { padding: 5px 8px; border-top: 1px solid var(--grid); color: var(--ink2); }
 .helpbox td:first-child { white-space: nowrap; color: var(--ink); }
 .helpbox .hsep { color: var(--muted); }
+.helpbox .hlinks { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 8px 2px; border-top: 1px solid var(--grid); font-size: var(--fs-s); }
+.helpbox .hlinks a { color: var(--accent); }
 .helpbox kbd {
   font: var(--fs-xs) var(--mono);
   background: var(--page);

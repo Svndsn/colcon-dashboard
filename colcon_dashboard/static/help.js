@@ -1,7 +1,8 @@
 import { $, initPanel } from './util.js';
 
-/* ---------------- keyboard help dropdown ----------------
+/* ---------------- help dropdown ----------------
    Every shortcut already exists; this dropdown makes them findable.
+   Its footer links to the documentation and the GitHub project.
    It also owns the two global keys: ? opens it, / finds a package. */
 
 const ROWS = [

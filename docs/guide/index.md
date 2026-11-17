@@ -31,7 +31,7 @@ From left to right, the header shows:
 - The number of parallel workers.
 - The **build command**, for example `colcon build · 2 options`, when the build used options. Click it to see the whole command.
 - The **system meters**: a heatmap with one cell per CPU core, and meters for CPU, RAM, and swap.
-- The buttons for notifications, the keyboard help, the theme, and the settings.
+- The buttons for notifications, the help, the theme, and the settings.
 
 Hold the mouse over a switcher to see the full workspace path or the build id. When the server stops answering, the whole header turns red.
 
@@ -115,3 +115,5 @@ Press ++question++ to see all the keys. These are the most useful:
 | ++enter++ / ++shift+enter++ | Next or previous match, in every search box |
 | ++esc++ | Clear the search, or close a dropdown or the settings |
 | ++left++ / ++right++ | Move between the log tabs |
+
+The help dropdown also links to this documentation, the GitHub project, and a form for a new issue.
