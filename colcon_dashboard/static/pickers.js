@@ -2,7 +2,7 @@ import { label } from './graph.js';
 import { setBadge } from './header.js';
 import { App } from './state.js';
 import { toast } from './toasts.js';
-import { $, esc, fmtAgo, fmtBytes, fmtDur, icon, initPanel, PINNED_BUILD, WS, wsParam } from './util.js';
+import { $, copyText, esc, fmtAgo, fmtBytes, fmtDur, icon, initPanel, PINNED_BUILD, restartServer, WS, wsParam } from './util.js';
 
 export const WS_SORTS = {
   // a workspace building now has the newest build, so "last built"
@@ -196,19 +196,41 @@ export async function scanWs() {
 
 export function showUpdateNote(update) {
   $('#updnote')?.remove();
-  if (!update
-      || localStorage.getItem('cmc-upd-dismissed') === update.latest) return;
+  const restart = update?.kind === 'restart';
+  // a dismissed upgrade note keeps the plain version as its key
+  const key = update && (restart ? `restart:${update.latest}` : update.latest);
+  if (!update || localStorage.getItem('cmc-upd-dismissed') === key) return;
   const note = document.createElement('div');
   note.id = 'updnote';
-  note.innerHTML =  // the versions come from a remote response: escape
-    `colcon-dashboard <b>${esc(update.latest)}</b> is available ` +
-    `(installed ${esc(update.current)}) - ` +
-    `<a href="https://github.com/autowarefoundation/colcon-dashboard/releases"` +
-    ` target="_blank" rel="noopener">release notes</a>` +
-    `<button class="dismiss" title="hide until the next release" aria-label="hide">${icon('close')}</button>`;
+  const notes = `<a href="https://github.com/autowarefoundation/colcon-dashboard/releases"` +
+    ` target="_blank" rel="noopener">release notes</a>`;
+  // the versions come from a remote response: escape
+  note.innerHTML = (restart
+    ? `<span>colcon-dashboard <b>${esc(update.latest)}</b> is installed, but the server still runs ` +
+      `${esc(update.current)} (${notes}).</span>` +
+      `<button class="updrestart" title="restart the dashboard server to run the new version">Restart the server</button>`
+    : `<span>colcon-dashboard <b>${esc(update.latest)}</b> is available ` +
+      `(installed ${esc(update.current)}, ${notes}).` +
+      (update.command ? ` Upgrade with <code>${esc(update.command)}</code>` +
+        `<button class="updcopy" title="copy the command" aria-label="copy the command">${icon('copy')}</button>` : '') +
+      `</span>`) +
+    `<button class="dismiss" title="${restart ? 'hide until the next version' : 'hide until the next release'}" aria-label="hide">${icon('close')}</button>`;
   note.querySelector('.dismiss').onclick = () => {
-    localStorage.setItem('cmc-upd-dismissed', update.latest);
+    localStorage.setItem('cmc-upd-dismissed', key);
     note.remove();
+  };
+  const copy = note.querySelector('.updcopy');
+  if (copy) copy.onclick = async () => {
+    toast(await copyText(update.command) ? 'Copied the upgrade command' : 'The browser refused the clipboard.', 'info');
+  };
+  const btn = note.querySelector('.updrestart');
+  if (btn) btn.onclick = async () => {
+    btn.disabled = true;
+    btn.textContent = 'Restarting…';
+    if (await restartServer()) return;
+    btn.disabled = false;
+    btn.textContent = 'Restart the server';
+    toast('The server did not come back. Start it from the tray icon or a terminal.', 'info');
   };
   $('#wspick .wshead').after(note);
 }

@@ -15,7 +15,7 @@ from .ai import CLAUDE_BIN
 from .config import CONFIG, save_extra_roots
 from .events import BUILD_DIR_RE
 from .monitor import prune_builds, remove_build_dir
-from .registry import discover_all, update_status
+from .registry import discover_all, install_source, update_check_on, update_status
 
 STARTED = time.time()  # the settings dialog sees a restart by this
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
@@ -313,6 +313,7 @@ class Handler(BaseHTTPRequestHandler):
                 "version": __version__,
                 "editor_url": CONFIG.editor_url,
                 "log_base": self.registry.log_base,
+                "install": install_source(),
                 "config": {
                     "path": CONFIG.path,
                     "exists": CONFIG.exists,
@@ -320,7 +321,7 @@ class Handler(BaseHTTPRequestHandler):
                     "port": CONFIG.port,
                     "log_base": CONFIG.log_base,
                     "auto_prune_keep": CONFIG.auto_prune_keep,
-                    "check_updates": CONFIG.check_updates,
+                    "check_updates": update_check_on(),
                     "claude_bin": CONFIG.claude_bin,
                     "editor_url": CONFIG.editor_url,
                     "extra_roots": CONFIG.extra_roots,

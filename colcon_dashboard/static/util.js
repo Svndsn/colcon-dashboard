@@ -90,6 +90,24 @@ export async function copyText(text) {
   }
 }
 
+// Restart the server and reload the page when it is back. False when it
+// does not come back in 20 s.
+export async function restartServer() {
+  const ping = async () => (await fetch('/api/ping', { cache: 'no-store' })).json();
+  let before = null;
+  try { before = (await ping()).started; } catch (e) { /* offline */ }
+  try { await fetch('/api/server/restart', { method: 'POST' }); } catch (e) { /* going down */ }
+  // a new server process (or the same one, after exec) has a new start time
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 300));
+    try {
+      if ((await ping()).started !== before) { location.reload(); return true; }
+    } catch (e) { /* not back yet */ }
+  }
+  return false;
+}
+
 export function fmtGB(kb) {
   const gb = kb / 1048576;
   return gb >= 100 ? Math.round(gb) : gb.toFixed(1).replace(/\.0$/, '');

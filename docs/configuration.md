@@ -16,7 +16,9 @@ If the file does not exist, the server writes a template with every key commente
 host = 127.0.0.1        ; use 0.0.0.0 to reach the page from another machine
 port = 8642
 log_base = log
-check_updates = false   ; true: ask PyPI once a day for a newer release
+check_updates = false   ; true: show a note when a newer version is out
+                        ; (the deb package asks apt and is true by
+                        ; default, other installs ask PyPI once a day)
 
 [builds]
 auto_prune_keep = -1    ; N >= 1: keep the newest N builds and N test

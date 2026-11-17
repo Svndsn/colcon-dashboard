@@ -7,6 +7,8 @@ list, and the home-directory scan for colcon workspaces.
 import json
 import os
 import re
+import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -297,13 +299,75 @@ class Registry:
 
 
 PYPI_URL = "https://pypi.org/pypi/colcon-dashboard/json"
-UPDATE_INTERVAL = 86400
+DEB_PACKAGE = "python3-colcon-dashboard"
+DEB_DIR = "/usr/lib/python3/dist-packages"
+PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+# seconds between checks: PyPI is a network request, and apt-cache only
+# reads the package lists that apt refreshes by itself
+UPDATE_INTERVAL = {"pypi": 86400, "apt": 3600}
+UPGRADE_COMMAND = {
+    "apt": f"sudo apt install --only-upgrade {DEB_PACKAGE}",
+    "pipx": "pipx upgrade colcon-dashboard",
+    "pip": "pip install --upgrade colcon-dashboard",
+}
 _update_thread = None
+
+
+def install_source():
+    """How this copy was installed: "apt" (the deb package), "pipx", or
+    "pip" (pip, a venv, or a source checkout)."""
+    if os.path.realpath(PKG_DIR).startswith(DEB_DIR + os.sep):
+        return "apt"
+    if f"{os.sep}pipx{os.sep}venvs{os.sep}" in sys.prefix + os.sep:
+        return "pipx"
+    return "pip"
+
+
+def update_check_on():
+    """check_updates from config.ini. When it is unset, the deb package
+    checks and other installs do not: apt-cache sends nothing over the
+    network, and a PyPI request does."""
+    if CONFIG.check_updates is not None:
+        return CONFIG.check_updates
+    return install_source() == "apt"
 
 
 def _ver_key(version):
     nums = [int(x) for x in re.findall(r"\d+", version or "")[:3]]
     return tuple(nums + [0] * (3 - len(nums)))
+
+
+def _upstream(deb_version):
+    """0.11.2 from the deb version 0.11.2ppa1~ubuntu24.04.1; None from
+    "(none)", the answer of apt-cache for an unknown package."""
+    m = re.match(r"(?:\d+:)?(\d+(?:\.\d+)*)", deb_version or "")
+    return m.group(1) if m else None
+
+
+def _apt_candidate():
+    """The version that an apt upgrade installs, from the local package
+    lists. LC_ALL=C, because apt-cache translates the field names."""
+    try:
+        out = subprocess.run(
+            ["apt-cache", "policy", DEB_PACKAGE], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            env=dict(os.environ, LC_ALL="C"), timeout=30, check=False).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(rb"^\s*Candidate:\s*(\S+)", out, re.M)
+    return _upstream(m.group(1).decode("ascii", "replace")) if m else None
+
+
+def _disk_version():
+    """__version__ of the files on disk. An upgrade replaces them under
+    a running server, and the server keeps the old code until it
+    restarts."""
+    try:
+        with open(os.path.join(PKG_DIR, "__init__.py")) as f:
+            m = re.search(r"""__version__\s*=\s*["']([^"']+)""", f.read())
+    except OSError:
+        return None
+    return m.group(1) if m else None
 
 
 def _read_update():
@@ -314,15 +378,23 @@ def _read_update():
         return None
 
 
-def _check_update_now():
-    data = {"checked_at": time.time()}
-    try:
-        with urllib.request.urlopen(PYPI_URL, timeout=6) as r:
-            data["latest"] = json.load(r)["info"]["version"]
-    except (OSError, ValueError, KeyError):
+def _check_update_now(source):
+    data = {"checked_at": time.time(), "source": source}
+    latest = None
+    if source == "apt":
+        latest = _apt_candidate()
+    else:
+        try:
+            with urllib.request.urlopen(PYPI_URL, timeout=6) as r:
+                latest = json.load(r)["info"]["version"]
+        except (OSError, ValueError, KeyError):
+            pass
+    if latest is None:
         old = _read_update()  # keep a stale answer over none
-        if old and old.get("latest"):
-            data["latest"] = old["latest"]
+        if old and old.get("source", "pypi") == source:
+            latest = old.get("latest")
+    if latest:
+        data["latest"] = latest
     try:
         os.makedirs(CACHE_DIR, exist_ok=True)
         with open(os.path.join(CACHE_DIR, "update.json"), "w") as f:
@@ -332,24 +404,35 @@ def _check_update_now():
 
 
 def update_status():
-    """{'latest', 'current'} when PyPI has a newer release, else None.
+    """The note for the workspace picker, or None.
 
-    Opt-in through check_updates in config.ini. At most one check a
-    day, always in the background: no request ever waits on PyPI.
+    kind "restart": an upgrade replaced the files on disk, and this
+    server still runs the old code. kind "upgrade": a newer version is
+    out. The deb package asks apt, so the note appears only when apt can
+    install the version. Other installs ask PyPI. The check runs in the
+    background at most once per UPDATE_INTERVAL: no request waits on it.
     """
     global _update_thread
-    if not CONFIG.check_updates:
+    disk = _disk_version()
+    if disk and _ver_key(disk) > _ver_key(__version__):
+        return {"kind": "restart", "latest": disk, "current": __version__}
+    if not update_check_on():
         return None
+    install = install_source()
+    source = "apt" if install == "apt" else "pypi"
     data = _read_update()
+    if data and data.get("source", "pypi") != source:
+        data = None  # the install changed: the old answer does not apply
     stale = data is None \
-        or time.time() - data.get("checked_at", 0) > UPDATE_INTERVAL
+        or time.time() - data.get("checked_at", 0) > UPDATE_INTERVAL[source]
     if stale and (_update_thread is None or not _update_thread.is_alive()):
         _update_thread = threading.Thread(target=_check_update_now,
-                                          daemon=True)
+                                          args=(source,), daemon=True)
         _update_thread.start()
     latest = (data or {}).get("latest")
     if latest and _ver_key(latest) > _ver_key(__version__):
-        return {"latest": latest, "current": __version__}
+        return {"kind": "upgrade", "latest": latest, "current": __version__,
+                "source": source, "command": UPGRADE_COMMAND[install]}
     return None
 
 

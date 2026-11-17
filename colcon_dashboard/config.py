@@ -57,8 +57,10 @@ TEMPLATE = """\
 # The log directory colcon writes, relative to each workspace.
 #log_base = log
 
-# Check PyPI once a day for a newer version and show a note in the
-# workspace picker.
+# Show a note in the workspace picker when a newer version is out.
+# The deb package asks apt (the local package lists, no network) and
+# checks by default. A pip or pipx install asks PyPI once a day, only
+# when this key is true.
 #check_updates = false
 
 [builds]
@@ -187,8 +189,8 @@ class Config:
         self.host = self._get(cp, "server", "host")
         self.port = self._get_int(cp, "server", "port")
         self.log_base = self._get(cp, "server", "log_base")
-        self.check_updates = bool(self._get_bool(cp, "server",
-                                                 "check_updates"))
+        # None (unset): the install decides (registry.update_check_on)
+        self.check_updates = self._get_bool(cp, "server", "check_updates")
         self.auto_prune_keep = self._get_int(cp, "builds", "auto_prune_keep")
         self.claude_bin = self._get(cp, "ai", "claude_bin")
         self.editor_url = self._get(cp, "ui", "editor_url")

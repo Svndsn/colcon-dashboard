@@ -969,6 +969,18 @@ body.offline #sysmeters { display: none; }
   font-size: var(--fs-s);
 }
 #updnote a { color: var(--accent); }
+#updnote code { font-family: var(--mono); background: var(--grid); padding: 0 4px; border-radius: var(--r-s); overflow-wrap: anywhere; }
+#updnote .updcopy {
+  border: none;
+  background: none;
+  box-shadow: none;
+  padding: 0 2px;
+  vertical-align: middle;
+  color: var(--muted);
+  cursor: pointer;
+}
+#updnote .updcopy:hover { color: var(--accent); }
+#updnote .updrestart { flex: none; }
 #updnote .dismiss {
   margin-left: auto;
   border: none;

@@ -21,7 +21,7 @@ Pick one way to install it. The Ubuntu PPA is the easiest on Ubuntu, and pipx wo
     colcon-dashboard --start-service
     ```
 
-    The package enables the systemd user service for every user, so the server starts at each login. The last command starts it now. The package upgrades with the usual system updates (`sudo apt upgrade`).
+    The package enables the systemd user service for every user, so the server starts at each login. The last command starts it now. The package upgrades with the usual system updates (`sudo apt upgrade`). When apt can install a newer version, the workspace picker shows a note. After an upgrade, the note offers a button that restarts the server, because the running server keeps the old code.
 
 === "pipx"
 

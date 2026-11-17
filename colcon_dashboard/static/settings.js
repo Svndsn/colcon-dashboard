@@ -2,7 +2,7 @@ import { getNotifyMode, notifyBlocked, serverNotifies, setNotifyMode, testNotify
 import { loadScanRoots, mountScanRoots } from './pickers.js';
 import { App } from './state.js';
 import { savedTheme, setTheme } from './theme.js';
-import { $, copyText, esc, icon, initPanel } from './util.js';
+import { $, copyText, esc, icon, initPanel, restartServer } from './util.js';
 
 /* ---------------- settings side panel ----------------
    One place for the choices this browser keeps (theme, notifications,
@@ -75,22 +75,11 @@ async function setSwitch(kind, on) {
   }
 }
 
-async function restartServer() {
+async function restartFromSettings() {
   const btn = $('#restartBtn');
-  const ping = async () => (await fetch('/api/ping', { cache: 'no-store' })).json();
-  let before = null;
-  try { before = (await ping()).started; } catch (e) { /* offline */ }
   btn.disabled = true;
   btn.textContent = 'Restarting…';
-  try { await fetch('/api/server/restart', { method: 'POST' }); } catch (e) { /* going down */ }
-  // a new server process (or the same one, after exec) has a new start time
-  const deadline = Date.now() + 20000;
-  while (Date.now() < deadline) {
-    await new Promise(r => setTimeout(r, 300));
-    try {
-      if ((await ping()).started !== before) { location.reload(); return; }
-    } catch (e) { /* not back yet */ }
-  }
+  if (await restartServer()) return;
   btn.disabled = false;
   btn.textContent = 'Restart the server';
   renderSwitches('The server did not come back. Start it from the tray icon or a terminal.');
@@ -117,7 +106,9 @@ function renderServer() {
     ['old builds', keep != null && keep >= 0 ? `keep the newest ${keep} of each kind` : unset('kept forever')],
     ['editor links', cfg.editor_url ? `<code>${esc(cfg.editor_url)}</code>` : unset('off')],
     ['claude CLI', cfg.claude_bin ? `<code>${esc(cfg.claude_bin)}</code>` : unset('found on PATH')],
-    ['update check', cfg.check_updates ? 'once a day' : unset('off')],
+    ['installed with', { apt: 'the deb package (apt)', pipx: 'pipx', pip: 'pip' }[App.cfg.install] || unset('unknown')],
+    ['update check', !cfg.check_updates ? unset('off')
+      : App.cfg.install === 'apt' ? 'every hour, from the apt package lists' : 'once a day, from PyPI'],
   ];
   $('#setServer').innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('');
 }
@@ -150,7 +141,7 @@ export function initSettings() {
   $('#setNotifyTest').onclick = testNotify;
   $('#setLogin').onchange = ev => setSwitch('login', ev.target.checked);
   $('#setTray').onchange = ev => setSwitch('tray', ev.target.checked);
-  $('#restartBtn').onclick = restartServer;
+  $('#restartBtn').onclick = restartFromSettings;
   // a log choice holds for the open panes too: their own buttons flip it,
   // and those buttons keep the choice for the next panes
   const logChoice = (id, btn) => {
